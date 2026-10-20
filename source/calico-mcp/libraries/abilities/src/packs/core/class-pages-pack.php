@@ -1,0 +1,1107 @@
+<?php
+/**
+ * Core Pages ability pack: definitions for the calicomcp/page-* abilities.
+ *
+ * @package Mosmcp_Abilities_Library
+ */
+
+namespace CalicoMCP\Abilities\Packs\Core;
+
+use CalicoMCP\Abilities\Ability;
+use CalicoMCP\Abilities\Ability_Pack;
+use CalicoMCP\Abilities\Packs\Core\Support\Core_Schema as Schema;
+use CalicoMCP\Abilities\Packs\Core\Support\Post_Duplicator;
+use CalicoMCP\Abilities\Support\Html_Policy;
+
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
+
+/*
+ * This library authors every translatable string under its own fixed text domain
+ * ('calicomcp-abilities'). The host plugin remaps them to its own text domain at
+ * runtime via Abilities_Library::init(). The domain therefore intentionally will
+ * not match any host plugin's slug, so the text-domain-mismatch check is disabled
+ * for this file (the library's phpcs.xml.dist allows the domain on the CLI; this
+ * directive covers IDE and Plugin Check runs that don't load that ruleset).
+ */
+// phpcs:disable WordPress.WP.I18n.TextDomainMismatch
+
+/**
+ * Class Pages_Pack
+ *
+ * Declares the page abilities and their governed contract. Execute logic lives in
+ * Pages_Provider and is preserved from the reviewed source.
+ */
+class Pages_Pack extends Ability_Pack {
+
+	/**
+	 * Ability category slug.
+	 */
+	const CATEGORY = 'calicomcp-pages';
+
+	/**
+	 * Ability category for page abilities.
+	 *
+	 * @return array Category definition.
+	 */
+	public function category() {
+		return array(
+			'slug'        => self::CATEGORY,
+			'label'       => __( 'Pages', 'calicomcp-abilities' ),
+			'description' => __( 'Create, edit, publish, and manage hierarchical pages.', 'calicomcp-abilities' ),
+		);
+	}
+
+	/**
+	 * The page abilities.
+	 *
+	 * @return Ability[]
+	 */
+	public function abilities() {
+		return array(
+			$this->create_draft(),
+			$this->duplicate(),
+			$this->set_featured_image(),
+			$this->template_get(),
+			$this->template_set(),
+			$this->update(),
+			$this->update_own(),
+			$this->publish(),
+			$this->unpublish(),
+			$this->schedule(),
+			$this->set_private(),
+			$this->set_pending(),
+			$this->trash(),
+			$this->restore(),
+			$this->delete_permanently(),
+			$this->find(),
+			$this->get(),
+			$this->list_all(),
+			$this->list_drafts(),
+			$this->list_own_drafts(),
+			$this->list_pending(),
+			$this->list_private(),
+			$this->list_published(),
+			$this->list_scheduled(),
+			$this->list_trash(),
+		);
+	}
+
+	/**
+	 * Defines the calicomcp/page-create-draft ability.
+	 *
+	 * @return Ability
+	 */
+	private function create_draft() {
+		return new Ability(
+			'calicomcp/page-create-draft',
+			array(
+				'label'         => __( 'Create Draft Page', 'calicomcp-abilities' ),
+				'description'   => __( 'Creates a new page as a draft, authored by the current user. The page is not published. Optionally set a parent page to create it as a sub-page.', 'calicomcp-abilities' ),
+				'category'      => self::CATEGORY,
+				'capability'    => 'edit_pages',
+				'annotations'   => self::annotations( false, false, false, false ),
+				'execute'       => array( Pages_Provider::class, 'create_draft' ),
+				'input_schema'  => Schema::object(
+					array(
+						'title'     => Schema::str( __( 'The title of the new draft page.', 'calicomcp-abilities' ), array( 'minLength' => 1 ) ),
+						'content'   => Schema::str( __( 'Optional content/body of the new draft page.', 'calicomcp-abilities' ) . ' ' . Html_Policy::rule_summary(), array( 'default' => '' ) ),
+						'parent_id' => Schema::int( __( 'Optional ID of a parent page, to create this as a sub-page.', 'calicomcp-abilities' ), array( 'minimum' => 1 ) ),
+						'slug'      => Schema::str( __( 'New URL slug. Omit to leave the address unchanged. Reduced to a URL-safe form, and a suffix is added if it is already taken.', 'calicomcp-abilities' ) ),
+					),
+					array( 'title' )
+				),
+				'output_schema' => Schema::object(
+					array(
+						'id'        => Schema::int(),
+						'title'     => Schema::str(),
+						'status'    => Schema::str(),
+						'slug'      => Schema::str( __( 'The URL slug as stored.', 'calicomcp-abilities' ) ),
+						'parent_id' => Schema::int(),
+						'edit_url'  => Schema::str(),
+						'warnings'  => Schema::warnings( __( 'Notes about the save, such as attributes that could not be kept or content that WordPress changed while saving.', 'calicomcp-abilities' ) ),
+					),
+					array( 'id', 'title', 'status' )
+				),
+			)
+		);
+	}
+
+	/**
+	 * Defines the calicomcp/page-update ability.
+	 *
+	 * @return Ability
+	 */
+	private function update() {
+		return new Ability(
+			'calicomcp/page-update',
+			array(
+				'label'         => __( 'Update Page', 'calicomcp-abilities' ),
+				'description'   => __( 'Edits the title, content and/or excerpt of an existing page, including pages authored by other users. Requires edit rights on that specific page, so a contributor still cannot edit a published page. Replaces the fields you pass and leaves the rest untouched; the page keeps its current status. If the post is built with Elementor, what visitors read comes from the Elementor layout rather than from this content, so change the text on the Elementor elements instead. This replaces a whole field with the text you supply. To change only part of the text, use calicomcp/content-replace-in-post instead: it is far cheaper on a long page and cannot lose formatting, shortcodes or block markup the way rewriting the whole field can.', 'calicomcp-abilities' ),
+				'category'      => self::CATEGORY,
+				'capability'    => 'edit_page',
+				'cap_args'      => self::id_args(),
+				'annotations'   => self::annotations( false, false, true, true ),
+				'execute'       => array( Pages_Provider::class, 'update' ),
+				'input_schema'  => Schema::object(
+					array(
+						'id'      => Schema::int( __( 'The ID of the page to update.', 'calicomcp-abilities' ), array( 'minimum' => 1 ) ),
+						'title'   => Schema::str( __( 'New title for the page. Omit to keep the current title.', 'calicomcp-abilities' ) ),
+						'content' => Schema::str( __( 'New content for the page. Omit to keep the current content.', 'calicomcp-abilities' ) . ' ' . Html_Policy::rule_summary() ),
+						'excerpt' => Schema::str( __( 'New excerpt for the page. Omit to keep the current excerpt; pass an empty string to clear it.', 'calicomcp-abilities' ) ),
+						'slug'    => Schema::str( __( 'New URL slug. Omit to leave the address unchanged. Reduced to a URL-safe form, and a suffix is added if it is already taken.', 'calicomcp-abilities' ) ),
+					),
+					array( 'id' )
+				),
+				'output_schema' => Schema::object(
+					array(
+						'id'        => Schema::int(),
+						'title'     => Schema::str(),
+						'status'    => Schema::str(),
+						'slug'      => Schema::str( __( 'The URL slug as stored, which may differ from a requested one.', 'calicomcp-abilities' ) ),
+						'updated'   => Schema::arr( array( 'type' => 'string' ), __( 'Fields that were changed.', 'calicomcp-abilities' ) ),
+						'warnings'  => Schema::warnings( __( 'Notes about the update, such as the content not being visible because Elementor renders this post.', 'calicomcp-abilities' ) ),
+						'modified'  => Schema::str(),
+						'edit_url'  => Schema::str(),
+						'view_url'  => Schema::str(),
+						'post_type' => Schema::str(),
+					),
+					array( 'id', 'title', 'status' )
+				),
+			)
+		);
+	}
+
+	/**
+	 * Defines the calicomcp/page-duplicate ability.
+	 *
+	 * A page's design lives in its metadata, not its content: an Elementor layout,
+	 * the assigned page template, the theme's per-page width and sidebar settings
+	 * and any ACF fields are all meta rows. Duplicating a page that already looks
+	 * right is the reliable way to author a new one that matches.
+	 *
+	 * @return Ability
+	 */
+	private function duplicate() {
+		return new Ability(
+			'calicomcp/page-duplicate',
+			array(
+				'label'            => __( 'Duplicate Page', 'calicomcp-abilities' ),
+				'description'      => __( 'Copies an existing page as a new draft, including its Elementor layout, assigned page template, theme display settings, custom fields and SEO fields. Use this to create a page that matches the design of an existing one, then edit the copy. The duplicate is authored by the current user and is created as a draft unless another status is given.', 'calicomcp-abilities' ),
+				'category'         => self::CATEGORY,
+				'capability'       => 'edit_post',
+				'cap_args'         => self::source_id_args(),
+				'permission_extra' => self::can_create_pages(),
+				'annotations'      => self::annotations( false, false, false, false ),
+				'execute'          => array( Pages_Provider::class, 'duplicate' ),
+				'input_schema'     => Schema::object(
+					array(
+						'source_id'         => Schema::int( __( 'The ID of the page to duplicate. Its layout and settings become the new page\'s.', 'calicomcp-abilities' ), array( 'minimum' => 1 ) ),
+						'title'             => Schema::str( __( 'Title for the duplicate. Omit to use the original title followed by "(copy)".', 'calicomcp-abilities' ) ),
+						'status'            => Schema::str(
+							__( 'Status for the duplicate. Defaults to draft so the result can be reviewed before publishing. Publishing requires the publish capability.', 'calicomcp-abilities' ),
+							array(
+								'enum'    => Post_Duplicator::ALLOWED_STATUSES,
+								'default' => 'draft',
+							)
+						),
+						'include_content'   => Schema::boolean( __( 'Whether to copy the page body. Set false to keep the layout and settings but start with empty content. Defaults to true.', 'calicomcp-abilities' ), array( 'default' => true ) ),
+						'expected_modified' => Schema::str( __( 'Optional. The "modified" timestamp from a previous read of the source page. The duplicate is refused if the source changed since then.', 'calicomcp-abilities' ) ),
+					),
+					array( 'source_id' )
+				),
+				'output_schema'    => Schema::object(
+					array(
+						'new_id'    => Schema::int( __( 'ID of the newly created duplicate.', 'calicomcp-abilities' ) ),
+						'source_id' => Schema::int(),
+						'title'     => Schema::str(),
+						'status'    => Schema::str(),
+						'edit_url'  => Schema::str(),
+						'view_url'  => Schema::str(),
+						'copied'    => Schema::object(
+							array(
+								'meta_rows'       => Schema::int( __( 'Number of metadata rows copied.', 'calicomcp-abilities' ) ),
+								'taxonomies'      => Schema::arr( array( 'type' => 'string' ), __( 'Taxonomies whose terms were copied.', 'calicomcp-abilities' ) ),
+								'thumbnail_id'    => Schema::int( __( 'Featured image attachment ID on the duplicate, or 0.', 'calicomcp-abilities' ) ),
+								'has_elementor'   => Schema::boolean( __( 'Whether the duplicate carries an Elementor layout.', 'calicomcp-abilities' ) ),
+								'elementor_bytes' => Schema::int(),
+							)
+						),
+						'skipped'   => Schema::arr(
+							Schema::object(
+								array(
+									'key'    => Schema::str(),
+									'reason' => Schema::str(),
+								)
+							),
+							__( 'Metadata deliberately not copied, with the reason for each.', 'calicomcp-abilities' )
+						),
+						'rewritten' => Schema::arr(
+							Schema::object(
+								array(
+									'key'    => Schema::str(),
+									'reason' => Schema::str(),
+								)
+							),
+							__( 'Metadata cleared rather than copied because the value is unique to the original.', 'calicomcp-abilities' )
+						),
+						'warnings'  => Schema::arr(
+							Schema::object(
+								array(
+									'code'    => Schema::str(),
+									'message' => Schema::str(),
+									'context' => Schema::str(),
+								)
+							),
+							__( 'Non-fatal issues encountered while duplicating.', 'calicomcp-abilities' )
+						),
+					),
+					array( 'new_id', 'source_id', 'title', 'status' )
+				),
+			)
+		);
+	}
+
+	/**
+	 * Defines the calicomcp/page-set-featured-image ability.
+	 *
+	 * @return Ability
+	 */
+	private function set_featured_image() {
+		return new Ability(
+			'calicomcp/page-set-featured-image',
+			array(
+				'label'            => __( 'Set Page Featured Image', 'calicomcp-abilities' ),
+				'description'      => __( 'Sets the featured image of a page to an existing media library image, or removes it by passing 0. Many themes render the featured image as the page banner.', 'calicomcp-abilities' ),
+				'category'         => self::CATEGORY,
+				'capability'       => 'edit_post',
+				'cap_args'         => self::id_args(),
+				'permission_extra' => self::can_edit_page(),
+				'annotations'      => self::annotations( false, false, true, true ),
+				'execute'          => array( Pages_Provider::class, 'set_featured_image' ),
+				'input_schema'     => Schema::object(
+					array(
+						'id'            => Schema::int( __( 'The ID of the page to update.', 'calicomcp-abilities' ), array( 'minimum' => 1 ) ),
+						'attachment_id' => Schema::int( __( 'Media library attachment ID of the image to use, or 0 to remove the current featured image.', 'calicomcp-abilities' ), array( 'minimum' => 0 ) ),
+					),
+					array( 'id', 'attachment_id' )
+				),
+				'output_schema'    => Schema::featured_image_output(),
+			)
+		);
+	}
+
+	/**
+	 * Defines the calicomcp/page-template-get ability.
+	 *
+	 * @return Ability
+	 */
+	private function template_get() {
+		return new Ability(
+			'calicomcp/page-template-get',
+			array(
+				'label'         => __( 'Get Page Template And Display Settings', 'calicomcp-abilities' ),
+				'description'   => __( 'Reports which page template a page uses, whether Elementor controls its layout, and the per-page theme settings (sidebar, content width, title visibility) that decide how it renders. Use this to find out why one page looks different from another.', 'calicomcp-abilities' ),
+				'category'      => self::CATEGORY,
+				'capability'    => 'edit_post',
+				'cap_args'      => self::id_args(),
+				'annotations'   => self::annotations( true, false, true, false ),
+				'execute'       => array( Pages_Provider::class, 'template_get' ),
+				'input_schema'  => Schema::object(
+					array(
+						'id' => Schema::int( __( 'The ID of the page to inspect.', 'calicomcp-abilities' ), array( 'minimum' => 1 ) ),
+					),
+					array( 'id' )
+				),
+				'output_schema' => Schema::template_get_output(),
+			)
+		);
+	}
+
+	/**
+	 * Defines the calicomcp/page-template-set ability.
+	 *
+	 * @return Ability
+	 */
+	private function template_set() {
+		return new Ability(
+			'calicomcp/page-template-set',
+			array(
+				'label'            => __( 'Set Page Template', 'calicomcp-abilities' ),
+				'description'      => __( 'Assigns a page template to a page, for example one of Elementor\'s full-width or canvas templates. Only templates the active theme and its plugins actually register are accepted, so a mistyped slug is refused instead of silently falling back to the default.', 'calicomcp-abilities' ),
+				'category'         => self::CATEGORY,
+				'capability'       => 'edit_post',
+				'cap_args'         => self::id_args(),
+				'permission_extra' => self::can_edit_page(),
+				'annotations'      => self::annotations( false, false, true, true ),
+				'execute'          => array( Pages_Provider::class, 'template_set' ),
+				'input_schema'     => Schema::object(
+					array(
+						'id'            => Schema::int( __( 'The ID of the page to update.', 'calicomcp-abilities' ), array( 'minimum' => 1 ) ),
+						'page_template' => Schema::str( __( 'Template slug to assign, or "default" for the theme default. Read the page first to list the slugs available on this site.', 'calicomcp-abilities' ), array( 'minLength' => 1 ) ),
+					),
+					array( 'id', 'page_template' )
+				),
+				'output_schema'    => Schema::template_set_output(),
+			)
+		);
+	}
+
+	/**
+	 * Defines the calicomcp/page-update-own ability.
+	 *
+	 * @return Ability
+	 */
+	private function update_own() {
+		return new Ability(
+			'calicomcp/page-update-own',
+			array(
+				'label'         => __( 'Update Own Page', 'calicomcp-abilities' ),
+				'description'   => __( 'Edits the title, content and/or excerpt of a page authored by the current user. Cannot edit pages written by other users. Only the fields you pass are changed; the page keeps its current status. If the post is built with Elementor, what visitors read comes from the Elementor layout rather than from this content, so change the text on the Elementor elements instead. This replaces a whole field with the text you supply. To change only part of the text, use calicomcp/content-replace-in-post instead: it is far cheaper on a long page and cannot lose formatting, shortcodes or block markup the way rewriting the whole field can.', 'calicomcp-abilities' ),
+				'category'      => self::CATEGORY,
+				'capability'    => 'edit_page',
+				'cap_args'      => self::id_args(),
+				'annotations'   => self::annotations( false, false, false, true ),
+				'execute'       => array( Pages_Provider::class, 'update_own' ),
+				'input_schema'  => Schema::object(
+					array(
+						'id'      => Schema::int( __( 'The ID of the page to update.', 'calicomcp-abilities' ), array( 'minimum' => 1 ) ),
+						'title'   => Schema::str( __( 'New title for the page. Omit to keep the current title.', 'calicomcp-abilities' ) ),
+						'content' => Schema::str( __( 'New content for the page. Omit to keep the current content.', 'calicomcp-abilities' ) . ' ' . Html_Policy::rule_summary() ),
+						'excerpt' => Schema::str( __( 'New excerpt for the page. Omit to keep the current excerpt; pass an empty string to clear it.', 'calicomcp-abilities' ) ),
+						'slug'    => Schema::str( __( 'New URL slug. Omit to leave the address unchanged. Reduced to a URL-safe form, and a suffix is added if it is already taken.', 'calicomcp-abilities' ) ),
+					),
+					array( 'id' )
+				),
+				'output_schema' => Schema::object(
+					array(
+						'id'        => Schema::int(),
+						'title'     => Schema::str(),
+						'status'    => Schema::str(),
+						'slug'      => Schema::str( __( 'The URL slug as stored, which may differ from a requested one.', 'calicomcp-abilities' ) ),
+						'modified'  => Schema::str(),
+						'updated'   => Schema::arr( array( 'type' => 'string' ), __( 'Fields that were changed.', 'calicomcp-abilities' ) ),
+						'warnings'  => Schema::warnings( __( 'Notes about the update, such as the content not being visible because Elementor renders this post.', 'calicomcp-abilities' ) ),
+						'edit_url'  => Schema::str(),
+						'view_url'  => Schema::str(),
+						'post_type' => Schema::str(),
+					),
+					array( 'id', 'title', 'status' )
+				),
+			)
+		);
+	}
+
+	/**
+	 * Defines the calicomcp/page-publish ability.
+	 *
+	 * @return Ability
+	 */
+	private function publish() {
+		return new Ability(
+			'calicomcp/page-publish',
+			array(
+				'label'            => __( 'Publish Page', 'calicomcp-abilities' ),
+				'description'      => __( 'Changes a draft or pending page to published, making it publicly visible immediately.', 'calicomcp-abilities' ),
+				'category'         => self::CATEGORY,
+				'capability'       => 'publish_pages',
+				'permission_extra' => self::can_edit_page(),
+				'annotations'      => self::annotations( false, false, false, true ),
+				'execute'          => array( Pages_Provider::class, 'publish' ),
+				'input_schema'     => Schema::object(
+					array(
+						'id' => Schema::int( __( 'The ID of the draft or pending page to publish.', 'calicomcp-abilities' ), array( 'minimum' => 1 ) ),
+					),
+					array( 'id' )
+				),
+				'output_schema'    => Schema::object(
+					array(
+						'id'              => Schema::int(),
+						'title'           => Schema::str(),
+						'previous_status' => Schema::str(),
+						'new_status'      => Schema::str(),
+						'link'            => Schema::str(),
+						'edit_url'        => Schema::str(),
+					),
+					array( 'id', 'title', 'previous_status', 'new_status' )
+				),
+			)
+		);
+	}
+
+	/**
+	 * Defines the calicomcp/page-unpublish ability.
+	 *
+	 * @return Ability
+	 */
+	private function unpublish() {
+		return new Ability(
+			'calicomcp/page-unpublish',
+			array(
+				'label'         => __( 'Unpublish Page', 'calicomcp-abilities' ),
+				'description'   => __( 'Reverts a published page back to draft status, removing it from public view.', 'calicomcp-abilities' ),
+				'category'      => self::CATEGORY,
+				'capability'    => 'edit_page',
+				'cap_args'      => self::id_args(),
+				'annotations'   => self::annotations( false, false, false, true ),
+				'execute'       => array( Pages_Provider::class, 'unpublish' ),
+				'input_schema'  => Schema::object(
+					array(
+						'id' => Schema::int( __( 'The ID of the published page to revert to draft.', 'calicomcp-abilities' ), array( 'minimum' => 1 ) ),
+					),
+					array( 'id' )
+				),
+				'output_schema' => self::status_change_output(),
+			)
+		);
+	}
+
+	/**
+	 * Defines the calicomcp/page-schedule ability.
+	 *
+	 * @return Ability
+	 */
+	private function schedule() {
+		return new Ability(
+			'calicomcp/page-schedule',
+			array(
+				'label'            => __( 'Schedule Page', 'calicomcp-abilities' ),
+				'description'      => __( 'Schedules a draft or pending page to be published automatically at a future date and time (site timezone).', 'calicomcp-abilities' ),
+				'category'         => self::CATEGORY,
+				'capability'       => 'publish_pages',
+				'permission_extra' => self::can_edit_page(),
+				'annotations'      => self::annotations( false, false, false, true ),
+				'execute'          => array( Pages_Provider::class, 'schedule' ),
+				'input_schema'     => Schema::object(
+					array(
+						'id'   => Schema::int( __( 'The ID of the draft or pending page to schedule.', 'calicomcp-abilities' ), array( 'minimum' => 1 ) ),
+						'date' => Schema::str( __( 'Future date and time in the site timezone, format: YYYY-MM-DD HH:MM:SS (e.g. 2026-08-01 09:00:00).', 'calicomcp-abilities' ) ),
+					),
+					array( 'id', 'date' )
+				),
+				'output_schema'    => Schema::object(
+					array(
+						'id'              => Schema::int(),
+						'title'           => Schema::str(),
+						'previous_status' => Schema::str(),
+						'new_status'      => Schema::str(),
+						'scheduled_for'   => Schema::str(),
+						'edit_url'        => Schema::str(),
+					),
+					array( 'id', 'title', 'new_status', 'scheduled_for' )
+				),
+			)
+		);
+	}
+
+	/**
+	 * Defines the calicomcp/page-set-private ability.
+	 *
+	 * @return Ability
+	 */
+	private function set_private() {
+		return new Ability(
+			'calicomcp/page-set-private',
+			array(
+				'label'            => __( 'Set Page to Private', 'calicomcp-abilities' ),
+				'description'      => __( 'Sets a page to private status, making it visible only to administrators and editors.', 'calicomcp-abilities' ),
+				'category'         => self::CATEGORY,
+				'capability'       => 'publish_pages',
+				'permission_extra' => self::can_edit_page(),
+				'annotations'      => self::annotations( false, false, false, true ),
+				'execute'          => array( Pages_Provider::class, 'set_private' ),
+				'input_schema'     => Schema::object(
+					array(
+						'id' => Schema::int( __( 'The ID of the page to make private.', 'calicomcp-abilities' ), array( 'minimum' => 1 ) ),
+					),
+					array( 'id' )
+				),
+				'output_schema'    => self::status_change_output(),
+			)
+		);
+	}
+
+	/**
+	 * Defines the calicomcp/page-set-pending ability.
+	 *
+	 * @return Ability
+	 */
+	private function set_pending() {
+		return new Ability(
+			'calicomcp/page-set-pending',
+			array(
+				'label'         => __( 'Set Page to Pending Review', 'calicomcp-abilities' ),
+				'description'   => __( 'Sets a draft page to pending review, so an editor can review and publish it.', 'calicomcp-abilities' ),
+				'category'      => self::CATEGORY,
+				'capability'    => 'edit_page',
+				'cap_args'      => self::id_args(),
+				'annotations'   => self::annotations( false, false, false, true ),
+				'execute'       => array( Pages_Provider::class, 'set_pending' ),
+				'input_schema'  => Schema::object(
+					array(
+						'id' => Schema::int( __( 'The ID of the draft page to submit for review.', 'calicomcp-abilities' ), array( 'minimum' => 1 ) ),
+					),
+					array( 'id' )
+				),
+				'output_schema' => self::status_change_output(),
+			)
+		);
+	}
+
+	/**
+	 * Defines the calicomcp/page-trash ability.
+	 *
+	 * @return Ability
+	 */
+	private function trash() {
+		return new Ability(
+			'calicomcp/page-trash',
+			array(
+				'label'         => __( 'Trash Page', 'calicomcp-abilities' ),
+				'description'   => __( 'Moves a page to the trash. The page is recoverable and can be restored later.', 'calicomcp-abilities' ),
+				'category'      => self::CATEGORY,
+				'capability'    => 'delete_page',
+				'cap_args'      => self::id_args(),
+				'annotations'   => self::annotations( false, true, true, true ),
+				'execute'       => array( Pages_Provider::class, 'trash' ),
+				'input_schema'  => Schema::object(
+					array(
+						'id' => Schema::int( __( 'The ID of the page to move to trash.', 'calicomcp-abilities' ), array( 'minimum' => 1 ) ),
+					),
+					array( 'id' )
+				),
+				'output_schema' => Schema::object(
+					array(
+						'id'              => Schema::int(),
+						'title'           => Schema::str(),
+						'previous_status' => Schema::str(),
+						'new_status'      => Schema::str(),
+						'restorable'      => Schema::boolean(),
+					),
+					array( 'id', 'title', 'new_status', 'restorable' )
+				),
+			)
+		);
+	}
+
+	/**
+	 * Defines the calicomcp/page-restore ability.
+	 *
+	 * @return Ability
+	 */
+	private function restore() {
+		return new Ability(
+			'calicomcp/page-restore',
+			array(
+				'label'         => __( 'Restore Page from Trash', 'calicomcp-abilities' ),
+				'description'   => __( 'Restores a page from the trash back to its previous status.', 'calicomcp-abilities' ),
+				'category'      => self::CATEGORY,
+				'capability'    => 'delete_page',
+				'cap_args'      => self::id_args(),
+				'annotations'   => self::annotations( false, false, true, true ),
+				'execute'       => array( Pages_Provider::class, 'restore' ),
+				'input_schema'  => Schema::object(
+					array(
+						'id' => Schema::int( __( 'The ID of the trashed page to restore.', 'calicomcp-abilities' ), array( 'minimum' => 1 ) ),
+					),
+					array( 'id' )
+				),
+				'output_schema' => Schema::object(
+					array(
+						'id'         => Schema::int(),
+						'title'      => Schema::str(),
+						'new_status' => Schema::str(),
+						'edit_url'   => Schema::str(),
+					),
+					array( 'id', 'title', 'new_status' )
+				),
+			)
+		);
+	}
+
+	/**
+	 * Defines the calicomcp/page-delete-permanently ability.
+	 *
+	 * @return Ability
+	 */
+	private function delete_permanently() {
+		return new Ability(
+			'calicomcp/page-delete-permanently',
+			array(
+				'label'         => __( 'Delete Page Permanently', 'calicomcp-abilities' ),
+				'description'   => __( 'Permanently deletes a page, bypassing the trash. This action is IRREVERSIBLE. Requires confirm=true.', 'calicomcp-abilities' ),
+				'category'      => self::CATEGORY,
+				'capability'    => 'delete_page',
+				'cap_args'      => self::id_args(),
+				'annotations'   => self::annotations( false, true, true, true ),
+				'execute'       => array( Pages_Provider::class, 'delete_permanently' ),
+				'input_schema'  => Schema::object(
+					array(
+						'id'      => Schema::int( __( 'The ID of the page to permanently delete.', 'calicomcp-abilities' ), array( 'minimum' => 1 ) ),
+						'confirm' => Schema::boolean( __( 'Must be true to confirm permanent, irreversible deletion.', 'calicomcp-abilities' ) ),
+					),
+					array( 'id', 'confirm' )
+				),
+				'output_schema' => Schema::object(
+					array(
+						'id'      => Schema::int(),
+						'title'   => Schema::str(),
+						'deleted' => Schema::boolean(),
+					),
+					array( 'id', 'title', 'deleted' )
+				),
+			)
+		);
+	}
+
+	/**
+	 * Defines the calicomcp/page-find ability.
+	 *
+	 * @return Ability
+	 */
+	private function find() {
+		return new Ability(
+			'calicomcp/page-find',
+			array(
+				'label'         => __( 'Find Page (ID by Name / Name by ID)', 'calicomcp-abilities' ),
+				'description'   => __( 'Looks up pages to resolve a page ID from a title/name, or a title from a page ID. Use this FIRST whenever the user refers to a page by its name and another ability requires a page ID. Provide "search" with the full or partial page title, or provide "id" to get that page\'s details. Searches all statuses. Returns up to 10 matches plus the total number of matches.', 'calicomcp-abilities' ),
+				'category'      => self::CATEGORY,
+				'capability'    => 'edit_pages',
+				'annotations'   => self::annotations( true, false, true, false ),
+				'execute'       => array( Pages_Provider::class, 'find' ),
+				'input_schema'  => Schema::object(
+					array(
+						'search' => Schema::str( __( 'Full or partial page title/name to search for. Provide either this or "id".', 'calicomcp-abilities' ), array( 'minLength' => 1 ) ),
+						'id'     => Schema::int( __( 'A page ID to look up the title and details for. Provide either this or "search".', 'calicomcp-abilities' ), array( 'minimum' => 1 ) ),
+					)
+				),
+				'output_schema' => Schema::object(
+					array(
+						'showing' => Schema::int(),
+						'total'   => Schema::int(),
+						'matches' => Schema::arr(
+							Schema::object(
+								array(
+									'id'          => Schema::int(),
+									'title'       => Schema::str(),
+									'status'      => Schema::str(),
+									'author_name' => Schema::str(),
+									'date'        => Schema::str(),
+									'edit_url'    => Schema::str(),
+								),
+								array( 'id', 'title', 'status' )
+							)
+						),
+						'notes'   => Schema::arr( Schema::str() ),
+					),
+					array( 'showing', 'total', 'matches' )
+				),
+			)
+		);
+	}
+
+	/**
+	 * Defines the calicomcp/page-get ability.
+	 *
+	 * @return Ability
+	 */
+	private function get() {
+		return new Ability(
+			'calicomcp/page-get',
+			array(
+				'label'         => __( 'Get Page', 'calicomcp-abilities' ),
+				'description'   => __( 'Gets the full details of a single page by its ID, including content, status, author, dates, and parent page.', 'calicomcp-abilities' ),
+				'category'      => self::CATEGORY,
+				'capability'    => 'read',
+				'annotations'   => self::annotations( true, false, true, false ),
+				'execute'       => array( Pages_Provider::class, 'get' ),
+				'input_schema'  => Schema::object(
+					array(
+						'id' => Schema::int( __( 'The ID of the page to retrieve.', 'calicomcp-abilities' ), array( 'minimum' => 1 ) ),
+					),
+					array( 'id' )
+				),
+				'output_schema' => Schema::object(
+					array(
+						'id'           => Schema::int(),
+						'title'        => Schema::str(),
+						'content'      => Schema::str(),
+						'excerpt'      => Schema::str(),
+						'status'       => Schema::str(),
+						'author_id'    => Schema::int(),
+						'author_name'  => Schema::str(),
+						'created'      => Schema::str(),
+						'modified'     => Schema::str(),
+						'link'         => Schema::str(),
+						'edit_url'     => Schema::str(),
+						'parent_id'    => Schema::int(),
+						'parent_title' => Schema::str(),
+					),
+					array( 'id', 'title', 'content', 'status' )
+				),
+			)
+		);
+	}
+
+	/**
+	 * Defines the calicomcp/page-list-all ability.
+	 *
+	 * @return Ability
+	 */
+	private function list_all() {
+		$properties = array_merge(
+			array(
+				'status' => Schema::str(
+					__( 'Filter by page status. Use "any" for all statuses.', 'calicomcp-abilities' ),
+					array(
+						'enum'    => array( 'any', 'publish', 'draft', 'pending', 'future', 'private', 'trash' ),
+						'default' => 'any',
+					)
+				),
+			),
+			Schema::pagination_props( __( 'pages', 'calicomcp-abilities' ) )
+		);
+
+		return new Ability(
+			'calicomcp/page-list-all',
+			array(
+				'label'         => __( 'List All Pages', 'calicomcp-abilities' ),
+				'description'   => __( 'Lists all pages of every status (published, draft, pending, scheduled, private, trashed), with an optional status filter. Returns at most per_page pages (default 20) plus the total. Users who cannot edit others\' pages only see their own pages.', 'calicomcp-abilities' ),
+				'category'      => self::CATEGORY,
+				'capability'    => 'edit_pages',
+				'annotations'   => self::annotations( true, false, true, false ),
+				'execute'       => array( Pages_Provider::class, 'list_all' ),
+				'input_schema'  => Schema::object( $properties ),
+				'output_schema' => self::page_list_output(
+					array(
+						'id'          => Schema::int(),
+						'title'       => Schema::str(),
+						'status'      => Schema::str(),
+						'author_name' => Schema::str(),
+						'date'        => Schema::str(),
+						'modified'    => Schema::str(),
+						'edit_url'    => Schema::str(),
+					),
+					array( 'id', 'title', 'status' )
+				),
+			)
+		);
+	}
+
+	/**
+	 * Defines the calicomcp/page-list-drafts ability.
+	 *
+	 * @return Ability
+	 */
+	private function list_drafts() {
+		return $this->paginated_list(
+			'calicomcp/page-list-drafts',
+			__( 'List Draft Pages', 'calicomcp-abilities' ),
+			__( 'Lists all draft pages on the site, from every author, newest-modified first. Users who cannot edit others\' pages only see their own drafts.', 'calicomcp-abilities' ),
+			'edit_pages',
+			'list_drafts',
+			__( 'pages', 'calicomcp-abilities' ),
+			array(
+				'id'          => Schema::int(),
+				'title'       => Schema::str(),
+				'author_name' => Schema::str(),
+				'excerpt'     => Schema::str(),
+				'modified'    => Schema::str(),
+				'edit_url'    => Schema::str(),
+			),
+			array( 'id', 'title', 'modified' ),
+			'drafts'
+		);
+	}
+
+	/**
+	 * Defines the calicomcp/page-list-own-drafts ability.
+	 *
+	 * @return Ability
+	 */
+	private function list_own_drafts() {
+		return $this->paginated_list(
+			'calicomcp/page-list-own-drafts',
+			__( 'List Own Draft Pages', 'calicomcp-abilities' ),
+			__( 'Lists draft pages created by the currently logged-in user only, newest-modified first.', 'calicomcp-abilities' ),
+			'edit_pages',
+			'list_own_drafts',
+			__( 'pages', 'calicomcp-abilities' ),
+			array(
+				'id'       => Schema::int(),
+				'title'    => Schema::str(),
+				'excerpt'  => Schema::str(),
+				'modified' => Schema::str(),
+				'edit_url' => Schema::str(),
+			),
+			array( 'id', 'title', 'modified' ),
+			'drafts'
+		);
+	}
+
+	/**
+	 * Defines the calicomcp/page-list-pending ability.
+	 *
+	 * @return Ability
+	 */
+	private function list_pending() {
+		return $this->paginated_list(
+			'calicomcp/page-list-pending',
+			__( 'List Pending Pages', 'calicomcp-abilities' ),
+			__( 'Lists pages that are pending review (submitted for an editor to approve and publish), newest-modified first. Users who cannot edit others\' pages only see their own pending pages.', 'calicomcp-abilities' ),
+			'edit_pages',
+			'list_pending',
+			__( 'pages', 'calicomcp-abilities' ),
+			array(
+				'id'          => Schema::int(),
+				'title'       => Schema::str(),
+				'author_name' => Schema::str(),
+				'excerpt'     => Schema::str(),
+				'modified'    => Schema::str(),
+				'edit_url'    => Schema::str(),
+			),
+			array( 'id', 'title', 'modified' )
+		);
+	}
+
+	/**
+	 * Defines the calicomcp/page-list-private ability.
+	 *
+	 * @return Ability
+	 */
+	private function list_private() {
+		return $this->paginated_list(
+			'calicomcp/page-list-private',
+			__( 'List Private Pages', 'calicomcp-abilities' ),
+			__( 'Lists private pages, which are visible only to editors and administrators.', 'calicomcp-abilities' ),
+			'read_private_pages',
+			'list_private',
+			__( 'pages', 'calicomcp-abilities' ),
+			array(
+				'id'       => Schema::int(),
+				'title'    => Schema::str(),
+				'excerpt'  => Schema::str(),
+				'modified' => Schema::str(),
+				'edit_url' => Schema::str(),
+			),
+			array( 'id', 'title', 'modified' )
+		);
+	}
+
+	/**
+	 * Defines the calicomcp/page-list-published ability.
+	 *
+	 * @return Ability
+	 */
+	private function list_published() {
+		return $this->paginated_list(
+			'calicomcp/page-list-published',
+			__( 'List Published Pages', 'calicomcp-abilities' ),
+			__( 'Lists published (publicly visible) pages, newest first.', 'calicomcp-abilities' ),
+			'read',
+			'list_published',
+			__( 'pages', 'calicomcp-abilities' ),
+			array(
+				'id'          => Schema::int(),
+				'title'       => Schema::str(),
+				'author_name' => Schema::str(),
+				'excerpt'     => Schema::str(),
+				'date'        => Schema::str(),
+				'link'        => Schema::str(),
+				'edit_url'    => Schema::str(),
+			),
+			array( 'id', 'title', 'date', 'link' )
+		);
+	}
+
+	/**
+	 * Defines the calicomcp/page-list-scheduled ability.
+	 *
+	 * @return Ability
+	 */
+	private function list_scheduled() {
+		return $this->paginated_list(
+			'calicomcp/page-list-scheduled',
+			__( 'List Scheduled Pages', 'calicomcp-abilities' ),
+			__( 'Lists pages that are scheduled to be published automatically at a future date and time.', 'calicomcp-abilities' ),
+			'edit_pages',
+			'list_scheduled',
+			__( 'pages', 'calicomcp-abilities' ),
+			array(
+				'id'            => Schema::int(),
+				'title'         => Schema::str(),
+				'scheduled_for' => Schema::str(),
+				'edit_url'      => Schema::str(),
+			),
+			array( 'id', 'title', 'scheduled_for' )
+		);
+	}
+
+	/**
+	 * Defines the calicomcp/page-list-trash ability.
+	 *
+	 * @return Ability
+	 */
+	private function list_trash() {
+		return $this->paginated_list(
+			'calicomcp/page-list-trash',
+			__( 'List Trashed Pages', 'calicomcp-abilities' ),
+			__( 'Lists pages currently in the trash, newest-modified first. Every trashed page is restorable (via calicomcp/page-restore) or can be permanently deleted (via calicomcp/page-delete-permanently). Users who cannot edit others\' pages only see their own trashed pages.', 'calicomcp-abilities' ),
+			'edit_pages',
+			'list_trash',
+			__( 'pages', 'calicomcp-abilities' ),
+			array(
+				'id'              => Schema::int(),
+				'title'           => Schema::str(),
+				'author_name'     => Schema::str(),
+				'previous_status' => Schema::str( __( 'The status the page had before it was trashed (it returns to this on restore).', 'calicomcp-abilities' ) ),
+				'trashed_on'      => Schema::str(),
+				'restorable'      => Schema::boolean(),
+			),
+			array( 'id', 'title', 'restorable' )
+		);
+	}
+
+	/**
+	 * Builds a read-only, paginated list ability.
+	 *
+	 * @param string               $name       Ability name.
+	 * @param string               $label      Ability label.
+	 * @param string               $desc       Ability description.
+	 * @param string               $capability Capability gate.
+	 * @param string               $method     Pages_Provider method name.
+	 * @param string               $noun       Plural noun for pagination descriptions.
+	 * @param array<string, mixed> $item_props Output item properties.
+	 * @param string[]             $item_req   Required output item fields.
+	 * @param string               $items_key  Key the provider returns the rows under.
+	 * @return Ability
+	 */
+	private function paginated_list( $name, $label, $desc, $capability, $method, $noun, array $item_props, array $item_req, $items_key = 'pages' ) {
+		return new Ability(
+			$name,
+			array(
+				'label'         => $label,
+				'description'   => $desc,
+				'category'      => self::CATEGORY,
+				'capability'    => $capability,
+				'annotations'   => self::annotations( true, false, true, false ),
+				'execute'       => array( Pages_Provider::class, $method ),
+				'input_schema'  => Schema::object( Schema::pagination_props( $noun ) ),
+				'output_schema' => self::page_list_output( $item_props, $item_req, $items_key ),
+			)
+		);
+	}
+
+	/**
+	 * Standard { showing, total, <items_key> } list output schema.
+	 *
+	 * The key is declared rather than assumed: the provider returns draft
+	 * listings under "drafts", and a schema that always said "pages" rejected
+	 * those responses as invalid output.
+	 *
+	 * @param array<string, mixed> $item_props Output item properties.
+	 * @param string[]             $item_req   Required output item fields.
+	 * @param string               $items_key  Key the provider returns the rows under.
+	 * @return array<string, mixed>
+	 */
+	private static function page_list_output( array $item_props, array $item_req, $items_key = 'pages' ) {
+		return Schema::object(
+			array(
+				'showing'  => Schema::int(),
+				'total'    => Schema::int(),
+				$items_key => Schema::arr( Schema::object( $item_props, $item_req ) ),
+			),
+			array( 'showing', 'total', $items_key )
+		);
+	}
+
+	/**
+	 * Output schema shared by simple status-change abilities.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private static function status_change_output() {
+		return Schema::object(
+			array(
+				'id'              => Schema::int(),
+				'title'           => Schema::str(),
+				'previous_status' => Schema::str(),
+				'new_status'      => Schema::str(),
+				'edit_url'        => Schema::str(),
+			),
+			array( 'id', 'title', 'previous_status', 'new_status' )
+		);
+	}
+
+	/**
+	 * Builds the four MCP annotation hints.
+	 *
+	 * @param bool $read_only   Read-only hint.
+	 * @param bool $destructive Destructive hint.
+	 * @param bool $idempotent  Idempotent hint.
+	 * @param bool $open_world  Open-world hint.
+	 * @return array<string, bool>
+	 */
+	private static function annotations( $read_only, $destructive, $idempotent, $open_world ) {
+		return array(
+			'readonly'    => $read_only,
+			'destructive' => $destructive,
+			'idempotent'  => $idempotent,
+			'open_world'  => $open_world,
+		);
+	}
+
+	/**
+	 * Resolves the page ID from input for object-level capability checks (cap_args).
+	 *
+	 * @return callable
+	 */
+	private static function id_args() {
+		return static function ( $input ) {
+			return array( isset( $input['id'] ) ? absint( $input['id'] ) : 0 );
+		};
+	}
+
+	/**
+	 * Resolves the source page ID for object-level capability checks (cap_args).
+	 *
+	 * Duplication reads the source, so the capability gate is edit_post against
+	 * source_id rather than against a page the caller is about to create.
+	 *
+	 * @return callable
+	 */
+	private static function source_id_args() {
+		return static function ( $input ) {
+			return array( isset( $input['source_id'] ) ? absint( $input['source_id'] ) : 0 );
+		};
+	}
+
+	/**
+	 * Requires the page type's create capability in addition to edit_post on the
+	 * source (permission_extra).
+	 *
+	 * wp_insert_post enforces no capabilities of its own, so without this a user
+	 * who may edit a page could create new ones they have no right to.
+	 *
+	 * @return callable
+	 */
+	private static function can_create_pages() {
+		return static function () {
+			$type = get_post_type_object( 'page' );
+			return $type ? current_user_can( $type->cap->create_posts ) : false;
+		};
+	}
+
+	/**
+	 * Requires edit rights on the specific page when an ID is given (permission_extra).
+	 *
+	 * @return callable
+	 */
+	private static function can_edit_page() {
+		return static function ( $input ) {
+			$id = isset( $input['id'] ) ? absint( $input['id'] ) : 0;
+			return $id > 0 ? current_user_can( 'edit_page', $id ) : true;
+		};
+	}
+}
