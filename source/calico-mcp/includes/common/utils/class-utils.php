@@ -1,0 +1,258 @@
+<?php
+/**
+ * Shared URL helpers for the MCP server and OAuth endpoints.
+ *
+ * @package Miniorange_Secure_MCP_Server
+ */
+
+namespace CalicoMCP\Common\Utils;
+
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
+
+use WP_REST_Request;
+
+/**
+ * Class Utils
+ *
+ * Stateless helpers for deriving the plugin's canonical URLs and applying the
+ * optional public-base override used during local development.
+ */
+class Utils {
+
+	/**
+	 * Returns the canonical resource URI of the MCP server.
+	 *
+	 * @return string The canonical MCP endpoint URL, without a trailing slash.
+	 */
+	public static function resource_url() {
+		// Not rest_url(): language plugins (Polylang/WPML) prefix it per request (e.g. /it), so consent and MCP calls disagree on the audience.
+		$home  = untrailingslashit( (string) get_option( 'home' ) );
+		$route = '/' . CALICOMCP_REST_NAMESPACE . '/mcp';
+		$url   = get_option( 'permalink_structure' )
+			? $home . '/' . rest_get_url_prefix() . $route
+			: $home . '/index.php?rest_route=' . $route;
+
+		return self::maybe_force_https( self::rewrite_url( $url ) );
+	}
+
+	/**
+	 * Returns the OAuth issuer identifier for this site.
+	 *
+	 * @return string The issuer URL, without a trailing slash.
+	 */
+	public static function issuer_url() {
+		return self::maybe_force_https( untrailingslashit( home_url() ) );
+	}
+
+	/**
+	 * Whether the current request actually reached the site over HTTPS, including
+	 * when TLS is terminated at a reverse proxy / load balancer (Cloudflare, etc.).
+	 *
+	 * @return bool
+	 */
+	public static function request_is_https() {
+		if ( is_ssl() ) {
+			return true;
+		}
+		if ( isset( $_SERVER['HTTP_X_FORWARDED_PROTO'] ) ) {
+			$proto = strtolower( sanitize_text_field( wp_unslash( $_SERVER['HTTP_X_FORWARDED_PROTO'] ) ) );
+			if ( 'https' === $proto ) {
+				return true;
+			}
+		}
+		if ( isset( $_SERVER['HTTP_X_FORWARDED_SSL'] ) ) {
+			$ssl = strtolower( sanitize_text_field( wp_unslash( $_SERVER['HTTP_X_FORWARDED_SSL'] ) ) );
+			if ( 'on' === $ssl ) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Upgrades an http:// URL to https:// when the request truly arrived over HTTPS.
+	 *
+	 * Fixes the reverse-proxy case where WordPress is configured as http:// but is served
+	 * publicly over https: without this the plugin would advertise http:// OAuth/metadata
+	 * endpoints, which MCP clients refuse.
+	 *
+	 * @param string $url The URL to normalize.
+	 * @return string The (possibly https) URL.
+	 */
+	public static function maybe_force_https( $url ) {
+		if ( is_string( $url ) && 0 === strpos( $url, 'http://' ) && self::request_is_https() ) {
+			return 'https://' . substr( $url, 7 );
+		}
+		return $url;
+	}
+
+	/**
+	 * Returns the configured public base URL override, or an empty string when off.
+	 *
+	 * @return string The public base, without a trailing slash.
+	 */
+	public static function public_base() {
+		if ( defined( 'CALICOMCP_PUBLIC_BASE' ) && '' !== CALICOMCP_PUBLIC_BASE ) {
+			return untrailingslashit( CALICOMCP_PUBLIC_BASE );
+		}
+
+		return '';
+	}
+
+	/**
+	 * Returns the local base URLs that the public base override should replace.
+	 *
+	 * @return string[] The local base URLs, without trailing slashes.
+	 */
+	public static function local_bases() {
+		static $bases = null;
+
+		if ( null !== $bases ) {
+			return $bases;
+		}
+
+		$candidates = array();
+
+		if ( defined( 'WP_HOME' ) && WP_HOME ) {
+			$candidates[] = WP_HOME;
+		}
+		if ( defined( 'WP_SITEURL' ) && WP_SITEURL ) {
+			$candidates[] = WP_SITEURL;
+		}
+		$candidates[] = get_option( 'home' );
+		$candidates[] = get_option( 'siteurl' );
+
+		$bases = array();
+		foreach ( $candidates as $candidate ) {
+			if ( is_string( $candidate ) && '' !== $candidate ) {
+				$bases[] = untrailingslashit( $candidate );
+			}
+		}
+
+		$bases = array_values( array_unique( array_filter( $bases ) ) );
+
+		return $bases;
+	}
+
+	/**
+	 * Rewrites a generated WordPress URL onto the public base override.
+	 *
+	 * @param string $url The URL produced by WordPress.
+	 * @return string The rewritten URL.
+	 */
+	public static function rewrite_url( $url ) {
+		$public = self::public_base();
+
+		if ( '' === $public || ! is_string( $url ) || '' === $url ) {
+			return $url;
+		}
+
+		foreach ( self::local_bases() as $base ) {
+			if ( 0 === strpos( $url, $base ) ) {
+				return $public . substr( $url, strlen( $base ) );
+			}
+		}
+
+		return $url;
+	}
+
+	/**
+	 * Whether this site's public URL is localhost/127.0.0.1 — unreachable by any AI
+	 * client outside this machine. False when a public-base override is configured
+	 * (`CALICOMCP_PUBLIC_BASE`), since that override exists precisely to work around this.
+	 *
+	 * @return bool
+	 */
+	public static function is_localhost_site() {
+		if ( '' !== self::public_base() ) {
+			return false;
+		}
+
+		$host = wp_parse_url( home_url(), PHP_URL_HOST );
+
+		return in_array( $host, array( 'localhost', '127.0.0.1' ), true );
+	}
+
+	/**
+	 * Returns the raw Authorization header, working around servers that strip it
+	 * from the CGI environment.
+	 *
+	 * Split out of {@see extract_bearer_token()} so a caller can tell "no
+	 * Authorization header arrived at all" — the signature of a proxy, WAF or CDN
+	 * removing it in transit — apart from "a header arrived but carried no usable
+	 * bearer token". Both end in the same 401 and the same "my AI client has no
+	 * abilities" symptom, so only the log can separate them.
+	 *
+	 * @param WP_REST_Request $request The request.
+	 * @return string The raw header value, or an empty string when absent.
+	 */
+	public static function authorization_header( WP_REST_Request $request ) {
+		$header = (string) $request->get_header( 'authorization' );
+
+		if ( '' === $header && ! empty( $_SERVER['HTTP_AUTHORIZATION'] ) ) {
+			$header = sanitize_text_field( wp_unslash( $_SERVER['HTTP_AUTHORIZATION'] ) );
+		}
+
+		if ( '' === $header && ! empty( $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ) ) {
+			$header = sanitize_text_field( wp_unslash( $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ) );
+		}
+
+		if ( '' === $header && function_exists( 'getallheaders' ) ) {
+			foreach ( (array) getallheaders() as $key => $value ) {
+				if ( 'authorization' === strtolower( (string) $key ) ) {
+					$header = sanitize_text_field( $value );
+					break;
+				}
+			}
+		}
+
+		// Some Apache/FastCGI setups surface the header only via apache_request_headers()
+		// (not $_SERVER['HTTP_AUTHORIZATION'] or getallheaders()).
+		if ( '' === $header && function_exists( 'apache_request_headers' ) ) {
+			foreach ( (array) apache_request_headers() as $key => $value ) {
+				if ( 'authorization' === strtolower( (string) $key ) ) {
+					$header = sanitize_text_field( $value );
+					break;
+				}
+			}
+		}
+
+		return $header;
+	}
+
+	/**
+	 * Extracts the bearer token from a request, working around servers that strip the
+	 * Authorization header from the CGI environment.
+	 *
+	 * Shared by {@see \CalicoMCP\Common\Controllers\MCP\REST_Controller::authenticate()} (the real
+	 * auth path) and the connectivity-diagnostic header-echo check, so both see identical
+	 * extraction behavior.
+	 *
+	 * Falls back to X-MO-Authorization, which the gateway sends alongside Authorization. That
+	 * fallback lives here rather than in {@see authorization_header()} so the latter still
+	 * reports whether Authorization itself arrived.
+	 *
+	 * @param WP_REST_Request $request The request.
+	 * @return string The token, or an empty string when absent.
+	 */
+	public static function extract_bearer_token( WP_REST_Request $request ) {
+		$header = self::authorization_header( $request );
+
+		// Last resort: the gateway repeats the token here for hosts that strip Authorization but pass custom headers.
+		if ( '' === $header ) {
+			$header = (string) $request->get_header( 'x_mo_authorization' );
+		}
+
+		if ( '' === $header && ! empty( $_SERVER['HTTP_X_MO_AUTHORIZATION'] ) ) {
+			$header = sanitize_text_field( wp_unslash( $_SERVER['HTTP_X_MO_AUTHORIZATION'] ) );
+		}
+
+		if ( preg_match( '/^Bearer\s+(.+)$/i', trim( $header ), $matches ) ) {
+			return trim( $matches[1] );
+		}
+
+		return '';
+	}
+}
