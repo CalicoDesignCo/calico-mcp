@@ -1,0 +1,14 @@
+# Never commit local credentials or site exports
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+wp-config.php
+node_modules/
+vendor/
+*.zip
+*.sql
+*.sqlite
+*.log
+local-settings*
