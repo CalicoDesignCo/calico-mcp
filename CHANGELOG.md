@@ -1,10 +1,18 @@
 # Changelog
 
+## 0.1.0-beta.29
+
+- Add unsaved Select all/Clear all controls for optional editing, all custom content, and each content-type block.
+- Preserve explicit Save access and existing authorization/revocation behavior.
+
+## 0.1.0-beta.28
+
+- Add public GitHub updates through native WordPress Update URI hooks. Include numbered beta releases deliberately; no token or forced automatic installation.
+- Require a version-pinned installable asset and SHA256 verification; cache bounded metadata checks and fail safely.
+- Include standalone native Advanced Date/static choice compatibility, image-option preservation and numeric Essential Addons view-counter compatibility from tested intermediate builds.
+- Refuse native Elementor revision restores outside the core comparison; retain Calico Undo and manual Elementor History.
+- Remove Gravity Forms tools and controls while retaining old data/history safely.
+
 ## 0.1.0-beta.22
 
-- Add separately enabled editing of already-published selected CPTs and full Elementor posts/pages, preserving publication status.
-- Add separately enabled append/remove/reorder operations for supported existing repeater rows, preserving row keys and unrelated values.
-- Retain fresh revision checks, native capability checks, permission-change revocation and guarded Undo.
-- Record recovery when third-party hooks unexpectedly change status.
-- Keep legacy draft operations draft-only. New permissions default off.
-- Initial private GitHub snapshot and unchanged tested release asset; no updater included.
+- Initial tested release baseline; published-content/repeater permissions default off.

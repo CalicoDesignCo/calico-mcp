@@ -1,51 +1,8 @@
 {
-  "version": "0.1.0-beta.22",
-  "sha256": "E6F8084BFE929A2FBB4DAEA306463D7BEDB13DE3FC3ED5D1230B01334EB5B9CE",
-  "package_files": 88,
-  "source_matches": true,
-  "checks": 381,
-  "completed": true,
-  "failed": 0,
-  "suites": [
-    {
-      "file": "results-beta.22.json",
-      "checks": 45,
-      "passed": true
-    },
-    {
-      "file": "retained-features-results-beta.22.json",
-      "checks": 103,
-      "passed": true
-    },
-    {
-      "file": "elementor-results-beta.22.json",
-      "checks": 26,
-      "passed": true
-    },
-    {
-      "file": "jetengine-results-beta.22.json",
-      "checks": 123,
-      "passed": true
-    },
-    {
-      "file": "live-content-results-beta.22.json",
-      "checks": 84,
-      "passed": true
-    }
-  ],
-  "php_files": 84,
-  "php_lint": [
-    "7.4.33",
-    "8.3.33"
-  ],
-  "versions": {
-    "wordpress": "7.1.3",
-    "php": "8.3.33",
-    "jetengine": "3.8.9.1",
-    "elementor": "4.3.4",
-    "yoast": "28.7"
-  },
-  "simulated_gravity_forms_checks": 19,
-  "boundary": "Local disposable WordPress only. No beta 22 remote installation or clone visual test. OAuth consent uses an authorization-code fixture; real transport, PKCE, permission and recovery code are exercised.",
-  "next": "Representative production-site clone trial with actual schemas, frontend/caches and Undo."
+  "Version": "0.1.0-beta.28",
+  "CoreChecks": 45,
+  "RetainedChecks": 126,
+  "Passed": true,
+  "PackageSHA256": "a3bdb72d9e323c232998961e61ab69d3aaa7b8dcd843b4c664ec051f269ff745",
+  "Boundary": "Disposable WordPress 7.1.3/PHP 8.3. Real Elementor 4.3.4 and Yoast 28.7. GitHub transport is substituted for updater tests. No production-host certification."
 }
