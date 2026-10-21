@@ -311,7 +311,19 @@ class Elementor_Content_Writer {
 	 */
 	private static function build_value( $role, $raw, $control, array $settings, $is_atomic, $element, $slug, array &$warnings ) {
 		if ( 'image' === $role ) {
-			return self::build_image( $raw );
+			$value = self::build_image( $raw );
+			if ( is_wp_error( $value ) ) {
+				return $value;
+			}
+			// Keep provider-specific media options; replace identity and stale alt only.
+			$old = isset( $settings[ $control ] ) && is_array( $settings[ $control ] ) ? $settings[ $control ] : array();
+			if ( array_key_exists( 'alt', $old ) ) {
+				$old['alt'] = (string) get_post_meta( $value['id'], '_wp_attachment_image_alt', true );
+			}
+			if ( array_key_exists( 'source', $old ) ) {
+				$old['source'] = 'library';
+			}
+			return array_merge( $old, $value );
 		}
 
 		if ( 'link' === $role ) {
