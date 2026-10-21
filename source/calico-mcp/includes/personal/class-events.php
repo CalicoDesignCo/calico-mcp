@@ -38,13 +38,18 @@ class Events extends Ability_Pack {
         if(Content_Discovery::bridge_preview()) { echo '<label><input type="checkbox" name="import_bridge" value="1"> Add existing Bridge-approved types and fields to this selection when saving (editing stays separately controlled).</label>'; }
         $candidates=self::candidates(); $scope=self::scope();
         if(!$candidates) { echo '<p>No supported custom content types are available. Custom-table and system types are excluded.</p>'; return; }
+        echo '<div data-cmcp-selection="content">';
+        Admin::selection_buttons('custom content types, fields and taxonomies');
         foreach($candidates as $type=>$candidate) {
             $selected=$scope[$type]??array();
-            echo '<details style="margin:12px 0"><summary>'.esc_html($candidate['label']).' <code>'.esc_html($type).'</code></summary><fieldset style="padding-left:12px"><label><input type="checkbox" name="event_types['.esc_attr($type).'][enabled]" value="1" '.checked(isset($scope[$type]),true,false).'> Read '.esc_html($candidate['label']).'</label>';
+            echo '<details data-cmcp-selection="type" style="margin:12px 0"><summary>'.esc_html($candidate['label']).' <code>'.esc_html($type).'</code></summary><fieldset style="padding-left:12px">';
+            Admin::selection_buttons($candidate['label'].' fields and taxonomies');
+            echo '<label><input type="checkbox" name="event_types['.esc_attr($type).'][enabled]" value="1" '.checked(isset($scope[$type]),true,false).'> Read '.esc_html($candidate['label']).'</label>';
             foreach($candidate['fields'] as $key=>$field) { $definition=self::definition($key,$field); echo '<label><input type="checkbox" name="event_types['.esc_attr($type).'][fields][]" value="'.esc_attr($key).'" '.checked(in_array($key,$selected['fields']??array(),true),true,false).'> '.esc_html($definition['label']).' <code>'.esc_html($key).'</code> <small>('.esc_html($definition['storage_format']).')</small></label>'; }
             foreach(self::taxonomy_definitions($type) as $tax=>$definition) { echo '<label><input type="checkbox" name="event_types['.esc_attr($type).'][taxonomies][]" value="'.esc_attr($tax).'" '.checked(in_array($tax,$selected['taxonomies']??array(),true),true,false).'> Taxonomy: '.esc_html($definition['label']).' <code>'.esc_html($tax).'</code></label>'; }
             echo '</fieldset></details>';
         }
+        echo '</div>';
     }
     private static function authorize($slug) { return Policy::is_owner(get_current_user_id())&&Policy::allowed('calicomcp/'.$slug)?true:new \WP_Error('calicomcp_denied','This event tool is not allowed for this account.'); }
     private static function selected($type) {

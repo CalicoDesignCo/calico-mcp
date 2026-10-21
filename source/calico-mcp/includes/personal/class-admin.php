@@ -5,6 +5,12 @@ use CalicoMCP\Common\Repositories\Audit_Store;
 use CalicoMCP\Common\Utils\Utils;
 if (!defined('ABSPATH')) { exit; }
 class Admin {
+    public static function assets($hook) {
+        if($hook==='toplevel_page_calico-mcp')wp_enqueue_script('calicomcp-select-all',plugin_dir_url(CALICOMCP_PLUGIN_FILE).'views/admin/select-all.js',array(),CALICOMCP_VERSION,true);
+    }
+    public static function selection_buttons($label) {
+        echo '<p class="cmcp-selection-actions"><button type="button" class="button" data-cmcp-select="all" aria-label="'.esc_attr('Select all '.$label).'">Select all</button> <button type="button" class="button" data-cmcp-select="none" aria-label="'.esc_attr('Clear all '.$label).'">Clear all</button> <span role="status" aria-live="polite" data-cmcp-selection-status></span></p>';
+    }
     public static function menu() { add_menu_page('Calico MCP','Calico MCP','manage_options','calico-mcp',array(__CLASS__,'render'),'dashicons-admin-links',81); }
     private static function permission($nonce) {
         if(!current_user_can('manage_options')) { wp_die('Administrator access required.','',array('response'=>403)); }
@@ -69,7 +75,9 @@ class Admin {
         if(!$can_manage) { echo '<div class="notice notice-warning"><p>Calico MCP is configured for another administrator account. Sign in with that account to manage it.</p></div></div>'; return; }
         echo '<div class="cmcp-grid"><div class="cmcp-card"><h2>Your access</h2><p>'.($owner?'WordPress account: <strong>'.esc_html($owner->display_name).'</strong>.':'Save these settings to use your current account.').'</p><p>'.esc_html($access_enabled?($editing?'Editing allowed: '.implode(', ',$editing).'.':'Read-only: your AI app can read selected content. All editing is off.'):'AI access is disabled. Saved editing choices apply when you enable access.').'</p>';
         self::form('calicomcp_save','calicomcp_save');
-        echo '<label><input type="checkbox" name="enabled" value="1" '.checked(!empty($s['enabled']),true,false).'> Enable AI access to this website</label><details'.($editing?' open':'').'><summary>Optional editing permissions</summary>';
+        echo '<label><input type="checkbox" name="enabled" value="1" '.checked(!empty($s['enabled']),true,false).'> Enable AI access to this website</label><details data-cmcp-selection="editing"'.($editing?' open':'').'><summary>Optional editing permissions</summary>';
+        self::selection_buttons('optional editing permissions');
+        echo '<p class="cmcp-muted">Select all includes published-item editing. Review choices before Save access; these buttons do not save or change the live connection.</p>';
         foreach(array('content'=>'Allow content edits','media'=>'Allow media uploads and edits','seo'=>'Allow Yoast SEO edits','events'=>'Allow custom content creation and edits','elementor'=>'Allow Elementor draft text and image edits','structure'=>'Allow draft duplication, template assignment and revision restoration','terms'=>'Allow category and tag management','seo_advanced'=>'Allow advanced Yoast SEO controls','elementor_full'=>'Allow full Elementor layout and style editing','published'=>'Also allow edits to already-published custom content and Elementor posts/pages','repeater_rows'=>'Allow appending, removing and reordering selected repeater rows') as $key=>$label) {
             echo '<label><input type="checkbox" name="'.esc_attr($key).'" value="1" '.checked(!empty($s[$key]),true,false).'> '.esc_html($label).'</label>';
         }

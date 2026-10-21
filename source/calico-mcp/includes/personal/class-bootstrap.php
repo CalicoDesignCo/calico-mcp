@@ -19,6 +19,7 @@ class Bootstrap {
         register_activation_hook(CALICOMCP_PLUGIN_FILE,array(__CLASS__,'activate'));
         register_deactivation_hook(CALICOMCP_PLUGIN_FILE,array(__CLASS__,'deactivate'));
         add_action('admin_menu',array(Admin::class,'menu'));
+        add_action('admin_enqueue_scripts',array(Admin::class,'assets'));
         add_action('admin_post_calicomcp_save',array(Admin::class,'save'));
         add_action('admin_post_calicomcp_revoke',array(Admin::class,'revoke'));
         add_action('admin_post_calicomcp_undo',array(Admin::class,'undo'));
