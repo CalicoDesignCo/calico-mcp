@@ -1,8 +1,8 @@
 {
-  "Version": "0.1.0-beta.28",
+  "Version": "0.1.0-beta.29",
   "CoreChecks": 45,
   "RetainedChecks": 126,
   "Passed": true,
-  "PackageSHA256": "a3bdb72d9e323c232998961e61ab69d3aaa7b8dcd843b4c664ec051f269ff745",
+  "PackageSHA256": "c2beb300c68a9b3db941af0c2299042ab2b7a44949dd7406e9fafd53431bae3e",
   "Boundary": "Disposable WordPress 7.1.3/PHP 8.3. Real Elementor 4.3.4 and Yoast 28.7. GitHub transport is substituted for updater tests. No production-host certification."
 }

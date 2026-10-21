@@ -2,9 +2,9 @@
 
 Direct WordPress MCP tools for one configured administrator. Skills supply workflow instructions; this connector supplies authenticated site operations.
 
-Version: **0.1.0-beta.28**. This is a beta release for staging evaluation. Download the **calico-mcp.zip** release asset, not GitHub's automatic source archive.
+Version: **0.1.0-beta.29**. This is a beta release for staging evaluation. Download the **calico-mcp.zip** release asset, not GitHub's automatic source archive.
 
-Adds the public GitHub update channel. A first manual installation is required on versions without an updater.
+Adds Select all / Clear all for optional editing permissions, all custom content and each content-type block. Choices remain unsaved until Save access.
 
 ## Included
 
