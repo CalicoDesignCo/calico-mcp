@@ -64,12 +64,15 @@ class Events extends Ability_Pack {
         if($type==='datetime-local') { return self::flag($f['is_timestamp']??false)?'datetime_timestamp':'datetime_local'; }
         if(in_array($type,array('text','textarea','wysiwyg','time','number'),true)) { return $type; }
         if($type==='media' && ($f['value_format']??'id')==='id') { return 'media_id'; }
-        if($type==='select' && !self::flag($f['is_multiple']??false) && empty($f['options_source']) && !empty($f['options'])) { return 'select'; }
+        if(in_array($type,array('select','radio'),true) && !self::flag($f['is_multiple']??false) && in_array($f['options_source']??'',array('','manual'),true) && !self::flag($f['options_from_glossary']??false) && !empty($f['options'])) { return $type; }
+        if($type==='advanced-date' && ($f['source']??'')==='jetengine' && Advanced_Date::provider()) { return 'jetengine_single_date'; }
         return 'read_only';
     }
     public static function definition($key,$f) {
         $format=self::format($f);
         $out=array('name'=>$key,'label'=>(string)($f['title']??$f['label']??$key),'type'=>$f['type']??'text','storage_format'=>$format,'writable'=>$format!=='read_only','input_note'=>in_array($format,array('date_iso','date_timestamp_utc'),true)?'YYYY-MM-DD; timestamp dates use UTC midnight.':($format==='datetime_timestamp'?'ISO 8601 with explicit offset or Unix seconds.':($format==='read_only'?'Direct replacement is not supported. See initial_rows_supported for new drafts and row_updates_supported for existing rows.':'Use the declared scalar type.')));
+        if(in_array($format,array('select','radio'),true)){$out['options']=array();foreach($f['options']as $option)if(isset($option['key'])&&is_scalar($option['key']))$out['options'][]=array('value'=>(string)$option['key'],'label'=>(string)($option['value']??$option['key']));}
+        if($format==='jetengine_single_date'){$out['input_note']='Object patch: date/end_date YYYY-MM-DD; time/end_time HH:MM. Omitted parts are preserved. Empty end_date and end_time clear the end. Single dates only; overnight ends need the following date. Native JetEngine wall-clock timestamps, not UTC instants.';$out['storage_keys']=Advanced_Date::keys($key);}
         return ($f['type']??'')==='repeater'?array_merge($out,Event_Repeaters::describe($f)):$out;
     }
     public function abilities() {
@@ -77,7 +80,7 @@ class Events extends Ability_Pack {
         $type=array('type'=>'string','description'=>'Selected event post-type slug.');
         $id=array('type'=>'integer','minimum'=>1,'description'=>'Event ID returned by event-list.');
         $common=array('post_type'=>$type);
-        $edit=array('title'=>array('type'=>'string','maxLength'=>500,'description'=>'Title of the draft event.'),'content'=>array('type'=>'string','maxLength'=>200000),'excerpt'=>array('type'=>'string','maxLength'=>20000),'featured_image_id'=>array('type'=>'integer','minimum'=>0),'fields'=>array('type'=>'object','additionalProperties'=>true,'description'=>'Only explicitly selected scalar fields. Omitted fields are preserved. Null deletion and complex/repeater writes are not supported.'),'terms'=>array('type'=>'object','additionalProperties'=>array('type'=>'array','maxItems'=>100,'items'=>array('type'=>'integer','minimum'=>1)),'description'=>'Selected taxonomy => complete list of existing term IDs. Omitted taxonomies are preserved.'));
+        $edit=array('title'=>array('type'=>'string','maxLength'=>500,'description'=>'Title of the draft event.'),'content'=>array('type'=>'string','maxLength'=>200000),'excerpt'=>array('type'=>'string','maxLength'=>20000),'featured_image_id'=>array('type'=>'integer','minimum'=>0),'fields'=>array('type'=>'object','additionalProperties'=>true,'description'=>'Selected scalar fields, or structured patches for declared jetengine_single_date fields. Read the schema and exact item first. Omitted fields/date parts are preserved; arbitrary complex/repeater replacement and null deletion are refused.'),'terms'=>array('type'=>'object','additionalProperties'=>array('type'=>'array','maxItems'=>100,'items'=>array('type'=>'integer','minimum'=>1)),'description'=>'Selected taxonomy => complete list of existing term IDs. Omitted taxonomies are preserved.'));
         $row_updates=array('repeater_updates'=>array('type'=>'array','minItems'=>1,'maxItems'=>25,'description'=>'Change existing repeater cells only. Read event-schema and event-get first. No row creation, deletion, reordering or full-array replacement.','items'=>array('type'=>'object','required'=>array('field','row_key','values'),'additionalProperties'=>false,'properties'=>array('field'=>array('type'=>'string','maxLength'=>128,'description'=>'Selected repeater field.'),'row_key'=>array('type'=>'string','maxLength'=>16,'description'=>'Exact existing row_key from event-get, such as 0 or item-0.'),'values'=>array('type'=>'object','minProperties'=>1,'maxProperties'=>20,'additionalProperties'=>true,'description'=>'Declared writable scalar child names and their new values. Other cells remain unchanged.')))));
         $initial_rows=array('initial_repeater_rows'=>array('type'=>'array','minItems'=>1,'maxItems'=>5,'description'=>'Initial repeater rows for a NEW draft only. Read event-schema first. At most 25 rows total. Cannot add rows to an existing event.','items'=>array('type'=>'object','required'=>array('field','rows'),'additionalProperties'=>false,'properties'=>array('field'=>array('type'=>'string','maxLength'=>128,'description'=>'Selected repeater with initial_rows_supported in event-schema.'),'rows'=>array('type'=>'array','minItems'=>1,'maxItems'=>25,'description'=>'Ordered initial rows, stored with numeric keys starting at 0.','items'=>array('type'=>'object','minProperties'=>1,'maxProperties'=>20,'additionalProperties'=>true,'description'=>'Declared writable child names and supplied scalar values only.'))))));
         $specs=array(
@@ -104,13 +107,14 @@ class Events extends Ability_Pack {
     public static function get($args) {
         $auth=self::authorize('event-get'); if(is_wp_error($auth)) { return $auth; }
         $post=self::resolve($args['post_type'],$args['id']); if(is_wp_error($post)) { return $post; }
-        $values=array(); $display=array(); $repeaters=array();
+        $values=array(); $display=array(); $repeaters=array(); $advanced=array();
         foreach(self::selected($post->post_type) as $key=>$f) {
             $value=get_post_meta($post->ID,$key,true); $values[$key]=$value; $display[$key]=self::display($f,$value);
             if(($f['type']??'')==='repeater') { $repeaters[$key]=Event_Repeaters::view($f,$value); }
+            if(($f['type']??'')==='advanced-date') { $advanced[$key]=Advanced_Date::view($post->ID,$key); }
         }
         $terms=array(); foreach((array)(self::scope()[$post->post_type]['taxonomies']??array()) as $tax) { if(!is_object_in_taxonomy($post->post_type,$tax)) { continue; } $found=wp_get_object_terms($post->ID,$tax,array('fields'=>'ids')); if(is_wp_error($found)) { return $found; } $terms[$tax]=$found; }
-        return array('id'=>$post->ID,'post_type'=>$post->post_type,'title'=>$post->post_title,'content'=>$post->post_content,'excerpt'=>$post->post_excerpt,'status'=>$post->post_status,'slug'=>$post->post_name,'fields'=>(object)$values,'field_display'=>(object)$display,'repeater_rows'=>(object)$repeaters,'terms'=>(object)$terms,'featured_image_id'=>(int)get_post_thumbnail_id($post->ID),'revision'=>Guard::revision(Guard::snapshot($post->ID)));
+        return array('id'=>$post->ID,'post_type'=>$post->post_type,'title'=>$post->post_title,'content'=>$post->post_content,'excerpt'=>$post->post_excerpt,'status'=>$post->post_status,'slug'=>$post->post_name,'fields'=>(object)$values,'field_display'=>(object)$display,'repeater_rows'=>(object)$repeaters,'advanced_dates'=>(object)$advanced,'terms'=>(object)$terms,'featured_image_id'=>(int)get_post_thumbnail_id($post->ID),'revision'=>Guard::revision(Guard::snapshot($post->ID)));
     }
     public static function listing($args) {
         $auth=self::authorize('event-list'); if(is_wp_error($auth)) { return $auth; }
@@ -165,7 +169,7 @@ class Events extends Ability_Pack {
         if($format==='time') { return is_string($value)&&preg_match('/^(?:[01]\d|2[0-3]):[0-5]\d$/D',$value)?$value:self::error($key,'Use HH:MM in 24-hour time.'); }
         if($format==='number') { return is_numeric($value)&&is_finite((float)$value)?(string)$value:self::error($key,'Use a finite number.'); }
         if($format==='media_id') { if(!ctype_digit((string)$value)||!wp_attachment_is_image((int)$value)||!current_user_can('read_post',(int)$value)) { return self::error($key,'Use the ID of a readable image attachment.'); } return (string)(int)$value; }
-        if($format==='select') { $choices=array(); foreach($field['options'] as $o) { if(isset($o['key'])) { $choices[]=(string)$o['key']; } } return in_array((string)$value,$choices,true)?(string)$value:self::error($key,'Use a declared option key.'); }
+        if(in_array($format,array('select','radio'),true)) { $choices=array(); foreach($field['options'] as $o) { if(isset($o['key'])) { $choices[]=(string)$o['key']; } } return in_array((string)$value,$choices,true)?(string)$value:self::error($key,'Use a declared option key.'); }
         if(strlen((string)$value)>200000) { return self::error($key,'Value is too large.'); }
         return $format==='wysiwyg'?wp_kses_post((string)$value):($format==='textarea'?sanitize_textarea_field((string)$value):sanitize_text_field((string)$value));
     }
@@ -175,9 +179,10 @@ class Events extends Ability_Pack {
     }
     private static function plan($args,$post_id=0,$creating=false) {
         $definitions=self::selected($args['post_type']); if(is_wp_error($definitions)) { return $definitions; }
-        $out=array('fields'=>array(),'terms'=>array());
+        $out=array('fields'=>array(),'terms'=>array(),'advanced_dates'=>array());
         foreach((array)($args['fields']??array()) as $key=>$value) {
             if(!isset($definitions[$key])) { return self::error($key,'Field is not selected.'); }
+            if(self::format($definitions[$key])==='jetengine_single_date'){$date=Advanced_Date::plan($post_id,$key,$definitions[$key],$value);if(is_wp_error($date))return $date;$out['advanced_dates'][$key]=$date;continue;}
             if($post_id && !self::can_edit_meta($post_id,$key)) { return self::error($key,'Metadata authorization refused.'); }
             // JetEngine declares protected business fields without registering WP meta.
             // Their access is gated by the explicit schema selection and edit_post capability.
@@ -212,6 +217,7 @@ class Events extends Ability_Pack {
             update_post_meta($id,$key,wp_slash($value));
             if(get_post_meta($id,$key,true)!==$value) { return new \WP_Error('event_save_failed','Field readback did not match: '.$key); }
         }
+        foreach($plan['advanced_dates']??array()as $key=>$date){$saved=Advanced_Date::apply($id,$key,$date);if(is_wp_error($saved))return $saved;}
         foreach($plan['terms'] as $tax=>$ids) { $r=wp_set_object_terms($id,$ids,$tax,false); if(is_wp_error($r)) { return $r; } $read=wp_get_object_terms($id,$tax,array('fields'=>'ids')); sort($ids); if(is_wp_error($read)) { return $read; } sort($read); if($ids!==$read) { return new \WP_Error('event_save_failed','Taxonomy readback did not match.'); } }
         if(isset($args['featured_image_id'])) { if($args['featured_image_id']===0) { delete_post_thumbnail($id); } else { set_post_thumbnail($id,$args['featured_image_id']); } if((int)get_post_thumbnail_id($id)!==$args['featured_image_id']) { return new \WP_Error('event_save_failed','Featured image readback did not match.'); } }
         return self::get(array('post_type'=>$args['post_type'],'id'=>$id));

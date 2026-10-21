@@ -4,9 +4,12 @@ if (!defined('ABSPATH')) { exit; }
 /** Recovery for non-post entities; never interpret a term or form entry ID as a post. */
 class Entity_Recovery {
     public static function handles($tool) { return in_array($tool,array('calicomcp/term-update','calicomcp/gf-mark-entry-read','calicomcp/gf-mark-entry-unread','calicomcp/gf-trash-entry','calicomcp/gf-restore-entry-from-trash'),true); }
-    public static function provider($tool) { return $tool==='calicomcp/term-update'?Taxonomies::class:Forms::class; }
+    // Recognize old entry records so their numeric IDs can never become post IDs.
+    public static function provider($tool) { return $tool==='calicomcp/term-update'?Taxonomies::class:null; }
     public static function run($ability,$args) {
-        $tool=$ability->get_name(); $provider=self::provider($tool); $before=$provider::snapshot($args);
+        $tool=$ability->get_name(); $provider=self::provider($tool);
+        if(!$provider)return new \WP_Error('integration_removed','Gravity Forms integration was removed. Existing recovery records are retained; no entry was changed.');
+        $before=$provider::snapshot($args);
         if(is_wp_error($before))return $before;
         $lock=Guard::lock('entity_'.($before['entity']??'unknown').'_'.$before['id']);
         if(!$lock)return new \WP_Error('item_busy','Another edit is in progress.');
@@ -17,11 +20,6 @@ class Entity_Recovery {
             unset($args['expected_revision']); $result=$ability->execute($args); $after=$provider::snapshot($args);
             global $wpdb;
             $state=is_wp_error($after)?'failed':($before===$after?'empty':'ready');
-            if(!is_wp_error($after)&&$provider===Forms::class) {
-                $key=strpos($tool,'mark-entry-')!==false?'is_read':'status';
-                $expected=$key==='is_read'?($tool==='calicomcp/gf-mark-entry-read'?1:0):($tool==='calicomcp/gf-trash-entry'?'trash':'active');
-                if((string)($after['values'][$key]??'')!==(string)$expected)$result=new \WP_Error('entry_save_failed','Gravity Forms property readback did not match.');
-            }
             $finished=$wpdb->update(Recovery::table(),array('state'=>$state,'after_hash'=>is_wp_error($after)?'':Toolbox::revision($after)),array('id'=>$backup));
             if($finished===false)return new \WP_Error('recovery_finalize_failed','The edit may have run. Recovery data was retained.',array('recovery_id'=>$backup));
             if(is_array($result)) { $result['recovery_id']=$backup; if(!is_wp_error($after))$result['revision']=Toolbox::revision($after); }
@@ -31,6 +29,7 @@ class Entity_Recovery {
     }
     public static function restore($row) {
         $before=json_decode($row['before_data'],true); $provider=self::provider($row['tool']);
+        if(!$provider)return new \WP_Error('integration_removed','Gravity Forms integration was removed. Existing recovery records are retained; no entry was changed.');
         $args=$before['args']; $lock=Guard::lock('entity_'.$before['entity'].'_'.$before['id']);
         if(!$lock)return new \WP_Error('item_busy','Another edit is in progress.');
         try {

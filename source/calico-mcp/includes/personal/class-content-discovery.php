@@ -29,6 +29,7 @@ class Content_Discovery {
                     $fields[$key]=array('name'=>$key,'title'=>$key,'type'=>'stored_unknown','source'=>'bridge-scan','note'=>'No declared schema. Read-only until a provider declares its storage contract.');
                 }
             }
+            foreach($fields as $key=>$field)if(($field['type']??'')==='advanced-date')foreach(array($key.'__config',$key.'__end_date')as $companion)if(isset($fields[$companion]))$fields[$companion]['type']='advanced_date_companion';
             ksort($fields); $out[$type]=array('label'=>$object->label,'fields'=>$fields);
         }
         ksort($out); return $out;

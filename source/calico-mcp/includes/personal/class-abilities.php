@@ -20,12 +20,10 @@ class Abilities {
         if(!function_exists('wp_register_ability_category')) { return; }
         $seen=array();foreach(self::packs() as $pack) { $cat=$pack->category(); if(isset($seen[$cat['slug']]))continue; $seen[$cat['slug']]=true; Naming::register_category($cat['slug'],array('label'=>$cat['label'],'description'=>$cat['description'])); }
         YSOA_Helpers::register_categories();
-        if(Forms::available())\CalicoMCP\Abilities\Packs\Forms\Forms_Abilities::register_categories();
     }
     public static function register() {
         if(!function_exists('wp_register_ability')) { return; }
         foreach(self::packs() as $pack) { foreach($pack->abilities() as $ability) { if(Policy::supports($ability->get_name())) { Ability_Registrar::register($ability); } } }
         YSOA_Helpers::register_abilities();
-        if(Forms::available())\CalicoMCP\Abilities\Packs\Forms\Forms_Abilities::register_abilities();
     }
 }

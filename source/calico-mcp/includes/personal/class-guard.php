@@ -14,14 +14,28 @@ class Guard {
         $terms=array(); foreach(get_object_taxonomies($post->post_type) as $taxonomy) { $ids=wp_get_object_terms($id,$taxonomy,array('fields'=>'ids')); if(!is_wp_error($ids)) { sort($ids); $terms[$taxonomy]=$ids; } } ksort($terms);
         return array('fields'=>$fields,'meta'=>$meta,'terms'=>$terms);
     }
-    public static function revision($snapshot) {
+    public static function derived_counter($key,$values) {
+        return $key==='_eael_post_view_count'&&is_array($values)&&count($values)===1&&isset($values[0])&&is_string($values[0])&&preg_match('/^\d+$/D',$values[0]);
+    }
+    private static function revision_view($snapshot,$ignore_counter=true) {
         // Rendering can regenerate these derived caches without any document edit.
         // Retain them in snapshots, but do not treat a preview as newer authored work.
         unset($snapshot['meta']['_elementor_css'],$snapshot['meta']['_elementor_element_cache'],$snapshot['meta']['_elementor_page_assets']);
         // Elementor 4 also records a version/manifest fingerprint during reads.
         // Any migration that changes actual layout/settings still changes the hash.
         foreach(array_keys($snapshot['meta']) as $key) { if(preg_match('/^_elementor_migrations_state_[a-f0-9]{4}$/D',$key)) { unset($snapshot['meta'][$key]); } }
-        return hash_hmac('sha256',serialize($snapshot),wp_salt('auth'));
+        // Essential Addons increments this numeric analytics value on page view.
+        // Never ignore an arbitrary prefix, duplicate records or malformed values.
+        if($ignore_counter&&self::derived_counter('_eael_post_view_count',$snapshot['meta']['_eael_post_view_count']??null))unset($snapshot['meta']['_eael_post_view_count']);
+        return $snapshot;
+    }
+    public static function revision($snapshot,$ignore_counter=true) {
+        return hash_hmac('sha256',serialize(self::revision_view($snapshot,$ignore_counter)),wp_salt('auth'));
+    }
+    public static function fingerprints($snapshot,$ignore_counter=true) {
+        $out=array();
+        foreach(self::revision_view($snapshot,$ignore_counter)as $section=>$values)foreach($values as $key=>$value)$out[$section][$key]=hash_hmac('sha256',serialize($value),wp_salt('auth'));
+        return $out;
     }
     public static function input_schema($ability) {
         $schema=$ability->get_input_schema(); $name=$ability->get_name();
@@ -79,12 +93,6 @@ class Guard {
         $args=is_array($input)?$input:array(); $id=self::subject($args); $writer=Policy::writer($name); $creation=self::creation($name);
         if(in_array(Policy::group($name),array('elementor_full','elementor_full_read'),true)&&$id) {
             $document=get_post($id);if(!$document||!in_array($document->post_type,array('post','page'),true))return new \WP_Error('elementor_document_denied','Full Elementor tools currently support posts and pages only.');
-        }
-        if(in_array(Policy::group($name),array('forms_read','forms_edit'),true)) {
-            $entries=strpos($name,'entry')!==false||strpos($name,'entries')!==false;
-            if(!Forms::can($entries?'gravityforms_view_entries':'gravityforms_edit_forms'))return new \WP_Error('forms_denied','Gravity Forms permission is missing.');
-            if($writer)return Entity_Recovery::run($ability,$args);
-            $result=$ability->execute($args);return $name==='calicomcp/gf-get-entry-by-id'?Forms::entry_revision($result,$args):$result;
         }
         if($name==='calicomcp/term-update')return Entity_Recovery::run($ability,$args);
         if($name==='calicomcp/term-create')return $ability->execute($args);

@@ -33,8 +33,10 @@ class Recovery {
         $full_elementor=Policy::group($row['tool'])==='elementor_full';
         $full_revision=$row['tool']==='calicomcp/content-revision-restore';
         $selection=$event?(Events::scope()[$before['fields']['post_type']]??array()):array();
+        if($event)$selection['fields']=Advanced_Date::recovery_keys($before['fields']['post_type'],$selection['fields']??array());
         foreach(array('post_title','post_content','post_excerpt','post_name','post_status') as $field) { if($before['fields'][$field]!==$after['fields'][$field]) { $delta['fields'][$field]=$before['fields'][$field]; } }
         foreach(array_unique(array_merge(array_keys($before['meta']),array_keys($after['meta']))) as $key) {
+            if(Guard::derived_counter($key,$after['meta'][$key]??null))continue;
             if(in_array($key,array('_elementor_css','_elementor_element_cache','_elementor_page_assets'),true)||preg_match('/^_elementor_migrations_state_[a-f0-9]{4}$/D',$key))continue;
             if(!$full_elementor&&!$full_revision&&!($row['tool']==='calicomcp/elementor-update-draft' && $key==='_elementor_data') && !in_array($key,array('_thumbnail_id','_wp_attachment_image_alt','_wp_page_template','_calicomcp_sitemap_excluded'),true) && strpos($key,'_yoast_wpseo_')!==0 && !in_array($key,$selection['fields']??array(),true)) { continue; }
             if(($before['meta'][$key]??null)!==($after['meta'][$key]??null)) { $delta['meta'][$key]=$before['meta'][$key]??null; }
@@ -42,6 +44,8 @@ class Recovery {
         foreach($selection['taxonomies']??array() as $tax) { if(($before['terms'][$tax]??array())!==($after['terms'][$tax]??array())) { $delta['terms'][$tax]=$before['terms'][$tax]??array(); } }
         if($row['tool']==='calicomcp/content-set-terms')foreach($before['terms'] as $tax=>$ids)if($ids!==($after['terms'][$tax]??array()))$delta['terms'][$tax]=$ids;
         $changed=!empty($delta['fields'])||!empty($delta['meta'])||!empty($delta['terms']);
+        // Owner-only conflict details retain hashes, never a second content snapshot.
+        $delta['after_fingerprints']=Guard::fingerprints($after);
         return $wpdb->update(self::table(),array('state'=>$changed?'ready':'empty','before_data'=>wp_json_encode($delta),'after_hash'=>Guard::revision($after)),array('id'=>$id))!==false;
     }
     public static function recent() { global $wpdb; return $wpdb->get_results($wpdb->prepare("SELECT id,post_id,tool,created,state FROM %i WHERE user_id=%d AND state='ready' ORDER BY id DESC LIMIT 20",self::table(),get_current_user_id()),ARRAY_A); }
@@ -61,7 +65,17 @@ class Recovery {
         $row=$wpdb->get_row($wpdb->prepare("SELECT * FROM %i WHERE id=%d AND user_id=%d AND state='ready'",self::table(),$id,get_current_user_id()),ARRAY_A);
         if(!$row || !current_user_can('edit_post',(int)$row['post_id'])) { return new \WP_Error('not_found','Recovery entry is not available.'); }
         $post_id=(int)$row['post_id']; $current=Guard::snapshot($post_id);
-        if(!$current || !hash_equals($row['after_hash'],Guard::revision($current))) { return new \WP_Error('stale_recovery','This item has changed since that edit. Undo was refused to preserve newer work.'); }
+        // Older records included the view counter. Accept their original hash
+        // only when the complete legacy state still matches, without bypasses.
+        if(!$current || (!hash_equals($row['after_hash'],Guard::revision($current))&&!hash_equals($row['after_hash'],Guard::revision($current,false)))) {
+            $detail='';$saved=json_decode($row['before_data'],true);
+            if($current&&!empty($saved['after_fingerprints'])){
+                $now=Guard::fingerprints($current,!isset($saved['after_fingerprints']['meta']['_eael_post_view_count']));$changed=array();
+                foreach(array('fields','meta','terms')as $section)foreach(array_unique(array_merge(array_keys($saved['after_fingerprints'][$section]??array()),array_keys($now[$section]??array())))as $key)if(($saved['after_fingerprints'][$section][$key]??null)!==($now[$section][$key]??null))$changed[]=$section.'.'.sanitize_key($key);
+                if($changed)$detail=' Changed keys: '.implode(', ',array_slice($changed,0,8)).(count($changed)>8?' (more omitted).':'.');
+            }
+            return new \WP_Error('stale_recovery','This item has changed since that edit. Undo was refused to preserve newer work.'.$detail);
+        }
         // Claim the recovery entry before applying it, so repeated submissions cannot run twice.
         $claimed=$wpdb->query($wpdb->prepare("UPDATE %i SET state='restoring' WHERE id=%d AND state='ready'",self::table(),$id));
         if($claimed!==1) { return new \WP_Error('recovery_busy','This recovery is already in progress.'); }
@@ -78,6 +92,7 @@ class Recovery {
         }
         foreach($delta['terms']??array() as $taxonomy=>$ids) { $r=wp_set_object_terms($post_id,array_map('intval',$ids),$taxonomy,false); if(is_wp_error($r)) { $wpdb->update(self::table(),array('state'=>'failed'),array('id'=>$id)); return $r; } }
         clean_post_cache($post_id);
+        Advanced_Date::invalidate($post_id,array_keys($delta['meta']));
         if($row['tool']==='calicomcp/elementor-update-draft'||Policy::group($row['tool'])==='elementor_full'||($row['tool']==='calicomcp/content-revision-restore'&&get_post_meta($post_id,'_elementor_data',true))) { Elementor::invalidate($post_id); }
         $restored=Guard::snapshot($post_id);
         foreach($delta['fields'] as $key=>$value) { if($restored['fields'][$key]!==$value) { $wpdb->update(self::table(),array('state'=>'failed'),array('id'=>$id)); return new \WP_Error('restore_failed','Content readback did not match. Recovery data was retained.'); } }

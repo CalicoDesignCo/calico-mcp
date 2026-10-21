@@ -15,6 +15,7 @@ class Bootstrap {
         return in_array($slug,(array)get_option('active_plugins',array()),true) || isset(((array)get_site_option('active_sitewide_plugins',array()))[$slug]);
     }
     public static function init() {
+        Updater::init();
         register_activation_hook(CALICOMCP_PLUGIN_FILE,array(__CLASS__,'activate'));
         register_deactivation_hook(CALICOMCP_PLUGIN_FILE,array(__CLASS__,'deactivate'));
         add_action('admin_menu',array(Admin::class,'menu'));

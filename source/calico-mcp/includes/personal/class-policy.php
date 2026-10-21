@@ -7,7 +7,7 @@ if (!defined('ABSPATH')) { exit; }
 class Policy {
     const OPTION = 'calicomcp_personal_settings';
     public static function settings() {
-        return wp_parse_args((array)get_option(self::OPTION, array()), array('owner'=>0,'enabled'=>false,'content'=>false,'media'=>false,'seo'=>false,'events'=>false,'elementor'=>false,'structure'=>false,'terms'=>false,'seo_advanced'=>false,'elementor_full'=>false,'forms_read'=>false,'forms_edit'=>false,'published'=>false,'repeater_rows'=>false,'event_types'=>array()));
+        return wp_parse_args((array)get_option(self::OPTION, array()), array('owner'=>0,'enabled'=>false,'content'=>false,'media'=>false,'seo'=>false,'events'=>false,'elementor'=>false,'structure'=>false,'terms'=>false,'seo_advanced'=>false,'elementor_full'=>false,'published'=>false,'repeater_rows'=>false,'event_types'=>array()));
     }
     public static function enabled() { $s=self::settings(); $site=wp_parse_url(home_url()); $secure=($site['scheme']??'')==='https' || in_array($site['host']??'',array('127.0.0.1','localhost','::1'),true); return $secure && !empty($s['enabled']) && self::is_owner((int)$s['owner']); }
     public static function is_owner($id) { $s=self::settings(); return $id>0 && (int)$s['owner']===$id && user_can($id,'manage_options'); }
@@ -19,8 +19,6 @@ class Policy {
             'seo_advanced'=>array('update-breadcrumb-title','update-canonical','update-robots-meta','update-robots-advanced','update-cornerstone','update-schema-types','update-sitemap-inclusion'),
             'elementor_full_read'=>array('elementor-page-read','elementor-render-preview','elementor-list-widget-types','elementor-widget-schema'),
             'elementor_full'=>array('elementor-page-write','elementor-element-duplicate','elementor-element-move','elementor-element-delete','elementor-element-set-content','elementor-element-set-style'),
-            'forms_read'=>array('gf-list-forms','gf-list-active-forms','gf-get-form-by-id','gf-get-form-fields','gf-get-form-settings','gf-list-entries','gf-get-entry-by-id','gf-count-entries','gf-export-entries-csv'),
-            'forms_edit'=>array('gf-mark-entry-read','gf-mark-entry-unread','gf-trash-entry','gf-restore-entry-from-trash'),
             'read'=>array('post-find','post-get','post-list-all','post-list-published','post-list-drafts','page-find','page-get','page-list-all','page-list-published','page-list-drafts','media-find','media-get','media-list-all','media-list-images','media-count-by-type','revision-get','revision-list-for-post','revision-count-for-post','get-meta-fields','get-focus-keyword','content-find-in-posts','event-schema','event-list','event-get','event-terms'),
             'content'=>array('post-create-draft','post-update','post-set-featured-image','page-create-draft','page-update','page-set-featured-image','content-replace-in-post'),
             'media'=>array('media-upload-from-url','media-upload-file','media-update-title','media-update-alt-text','media-update-caption','media-update-description'),
@@ -43,10 +41,9 @@ class Policy {
         $group=self::group($name); $settings=self::settings();
         if($group==='repeater_rows'&&empty($settings['events']))return false;
         if(in_array($group,array('elementor_read','elementor','elementor_full_read','elementor_full'),true) && !Elementor::available()) { return false; }
-        if(in_array($group,array('forms_read','forms_edit'),true) && (!Forms::available()||empty($settings['forms_read'])))return false;
         return in_array($group,array('read','structure_read','elementor_full_read','elementor_read'),true) || ($group!==null && !empty($settings[$group]));
     }
-    public static function writer($name) { $group=self::group($name); return $group!==null && !in_array($group,array('read','structure_read','elementor_read','elementor_full_read','forms_read'),true); }
+    public static function writer($name) { $group=self::group($name); return $group!==null && !in_array($group,array('read','structure_read','elementor_read','elementor_full_read'),true); }
     public static function editable_status($post,$allow_published=false) {
         return $post&&($post->post_status==='draft'||($allow_published&&$post->post_status==='publish'&&!empty(self::settings()['published'])));
     }
