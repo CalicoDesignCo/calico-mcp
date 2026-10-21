@@ -2,7 +2,7 @@
 Contributors: Calico Design
 Requires at least: 6.9
 Requires PHP: 7.4
-Stable tag: 0.1.0-beta.28
+Stable tag: 0.1.0-beta.29
 License: MIT
 
 Personal-use beta. Direct OAuth-protected MCP tools for WordPress, selected custom content, Elementor and Yoast SEO.
@@ -32,3 +32,5 @@ Exclude the verified numeric Essential Addons view counter from authored revisio
 
 = 0.1.0-beta.24 =
 Local candidate: static radio choices and native JetEngine single-date configuration/readback/recovery. Preserve Elementor media options and refresh image alt metadata. New recovery records identify changed keys on conflict without disclosing values; the revision guard remains strict. The Hydrate full-preview Undo conflict still requires host diagnosis. No Select all controls or recurrence-plugin integration in this build.
+
+Select all and Clear all controls are available for optional editing permissions, all custom content, and each content-type block. They change only unsaved form choices until Save access is selected. Global custom-content selection does not enable editing or AI access. Permission changes still revoke existing connections.
