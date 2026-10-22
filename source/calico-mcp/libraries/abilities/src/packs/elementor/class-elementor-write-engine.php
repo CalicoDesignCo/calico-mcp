@@ -381,6 +381,34 @@ class Elementor_Write_Engine {
 		}
 
 		$stored = Elementor_Document::raw( $post_id );
+		// Elementor drops some extension controls while serializing the whole tree.
+		// Retain only values that were already stored and were not changed by this
+		// request. New/changed values must still pass Elementor's normal save path.
+		$before_tree = json_decode( (string) $snapshot, true );
+		$stored_tree = json_decode( (string) $stored, true );
+		if ( is_array( $before_tree ) && is_array( $stored_tree ) ) {
+			$before_nodes = self::settings_by_id( $before_tree );
+			$desired_nodes = self::settings_by_id( $tree );
+			$restored_settings = self::retain_unchanged_settings( $stored_tree, $before_nodes, $desired_nodes );
+			if ( is_wp_error( $restored_settings ) ) {
+				self::restore( $post_id, $snapshot );
+				return $restored_settings;
+			}
+			if ( $restored_settings ) {
+				$encoded = wp_json_encode( $stored_tree );
+				if ( false === $encoded ) {
+					self::restore( $post_id, $snapshot );
+					return new WP_Error( 'elementor_preservation_failed', 'Unchanged Elementor settings could not be preserved. The previous layout was restored.' );
+				}
+				update_post_meta( $post_id, Elementor_Document::DATA_KEY, wp_slash( $encoded ) );
+				$readback = Elementor_Document::raw( $post_id );
+				if ( json_decode( $readback, true ) !== $stored_tree ) {
+					self::restore( $post_id, $snapshot );
+					return new WP_Error( 'elementor_preservation_failed', 'Unchanged Elementor settings did not persist. The previous layout was restored.' );
+				}
+				$stored = $readback;
+			}
+		}
 		if ( '' === $stored ) {
 			self::restore( $post_id, $snapshot );
 			return new WP_Error(
@@ -402,6 +430,50 @@ class Elementor_Write_Engine {
 		}
 
 		return array( 'warnings' => $warnings );
+	}
+
+	/** Index authored settings by stable element ID, including nested elements. */
+	private static function settings_by_id( array $tree ) {
+		$out = array();
+		foreach ( $tree as $node ) {
+			if ( ! is_array( $node ) ) { continue; }
+			if ( isset( $node['id'] ) ) { $out[ (string) $node['id'] ] = $node; }
+			if ( ! empty( $node['elements'] ) && is_array( $node['elements'] ) ) {
+				$out = array_replace( $out, self::settings_by_id( $node['elements'] ) );
+			}
+		}
+		return $out;
+	}
+
+	/** Restore omitted, unchanged controls only on the same element type. */
+	private static function retain_unchanged_settings( array &$tree, array $before, array $desired ) {
+		$changed = false;
+		foreach ( $tree as &$node ) {
+			$id = isset( $node['id'] ) ? (string) $node['id'] : '';
+			if ( isset( $before[ $id ], $desired[ $id ] ) &&
+				( $before[ $id ]['elType'] ?? '' ) === ( $node['elType'] ?? '' ) &&
+				( $before[ $id ]['widgetType'] ?? '' ) === ( $node['widgetType'] ?? '' ) &&
+				( $desired[ $id ]['elType'] ?? '' ) === ( $node['elType'] ?? '' ) &&
+				( $desired[ $id ]['widgetType'] ?? '' ) === ( $node['widgetType'] ?? '' ) ) {
+				foreach ( ( $desired[ $id ]['settings'] ?? array() ) as $key => $value ) {
+					if ( ! array_key_exists( $key, $before[ $id ]['settings'] ?? array() ) || $before[ $id ]['settings'][ $key ] !== $value ) { continue; }
+					if ( ! isset( $node['settings'] ) || ! is_array( $node['settings'] ) ) { $node['settings'] = array(); }
+					if ( ! array_key_exists( $key, $node['settings'] ) ) {
+						$node['settings'][ $key ] = $value;
+						$changed = true;
+					} elseif ( $node['settings'][ $key ] !== $value ) {
+						return new WP_Error( 'elementor_preservation_failed', 'Elementor changed an unrelated stored control. The previous layout was restored.' );
+					}
+				}
+			}
+			if ( ! empty( $node['elements'] ) && is_array( $node['elements'] ) ) {
+				$children = self::retain_unchanged_settings( $node['elements'], $before, $desired );
+				if ( is_wp_error( $children ) ) { return $children; }
+				$changed = $changed || $children;
+			}
+		}
+		unset( $node );
+		return $changed;
 	}
 
 	/**
