@@ -2,7 +2,7 @@
 Contributors: Calico Design
 Requires at least: 6.9
 Requires PHP: 7.4
-Stable tag: 0.1.0-beta.29
+Stable tag: 0.1.0-beta.32
 License: MIT
 
 Personal-use beta. Direct OAuth-protected MCP tools for WordPress, selected custom content, Elementor and Yoast SEO.
@@ -34,3 +34,11 @@ Exclude the verified numeric Essential Addons view counter from authored revisio
 Local candidate: static radio choices and native JetEngine single-date configuration/readback/recovery. Preserve Elementor media options and refresh image alt metadata. New recovery records identify changed keys on conflict without disclosing values; the revision guard remains strict. The Hydrate full-preview Undo conflict still requires host diagnosis. No Select all controls or recurrence-plugin integration in this build.
 
 Select all and Clear all controls are available for optional editing permissions, all custom content, and each content-type block. They change only unsaved form choices until Save access is selected. Global custom-content selection does not enable editing or AI access. Permission changes still revoke existing connections.
+
+
+== Ownership recovery ==
+If the configured account has been deleted, a current administrator can explicitly Recover ownership. Saved editing and custom content selections are preserved, old connections are revoked, and AI access stays disabled until reviewed and enabled. An existing account cannot be displaced through recovery.
+
+
+== Shared templates and organization profiles ==
+Beta31 adds shared-template-list and permits existing Elementor library, JetThemeCore and Essential Addons documents through full Elementor tools. Shared-template editing defaults off and needs Full Elementor plus published-item permission for published templates. Template assignment/conditions are not directly edited. Organization-get and organization-update patch only Yoast's supported organization social profiles, with separate default-off permission, revision checks and administrator Undo. Other option settings are preserved. Permission changes, owner recovery and plugin deactivation revoke codes/tokens while retaining durable OAuth client registrations for a fresh login. The individual Revoke app action still removes that registration. Previously deleted client registrations cannot be reconstructed by this update.
