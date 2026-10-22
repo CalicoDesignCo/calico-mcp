@@ -39,6 +39,7 @@ class Guard {
     }
     public static function input_schema($ability) {
         $schema=$ability->get_input_schema(); $name=$ability->get_name();
+        if(in_array(Policy::group($name),array('elementor_full','elementor_full_read'),true)&&isset($schema['properties']['id']))$schema['properties']['id']['description']='Existing post, page or shared Elementor template ID. Use shared-template-list to discover templates. Shared writes need separate permission and may affect many pages.';
         if(in_array(Policy::group($name),array('seo','seo_advanced'),true)) { $schema['properties']['post_id']['description']='Existing post/page ID, or a selected custom draft/published item. Custom content SEO requires custom editing and the applicable Yoast permission; published custom items also require published editing.'; }
         if(Policy::writer($name) && !self::creation($name)) {
             $schema['properties']['expected_revision']=array('type'=>'string','description'=>'Revision returned by a fresh get/read of this exact item. A stale revision refuses the edit.','minLength'=>64,'maxLength'=>64);
@@ -92,8 +93,10 @@ class Guard {
         if(!Policy::is_owner(get_current_user_id()) || !Policy::allowed($name)) { return new \WP_Error('calicomcp_denied','This tool is not allowed for this account.'); }
         $args=is_array($input)?$input:array(); $id=self::subject($args); $writer=Policy::writer($name); $creation=self::creation($name);
         if(in_array(Policy::group($name),array('elementor_full','elementor_full_read'),true)&&$id) {
-            $document=get_post($id);if(!$document||!in_array($document->post_type,array('post','page'),true))return new \WP_Error('elementor_document_denied','Full Elementor tools currently support posts and pages only.');
+            $document=get_post($id);if(!$document||(!in_array($document->post_type,array('post','page'),true)&&!Shared_Templates::supported($document)))return new \WP_Error('elementor_document_denied','Use a post, page or supported existing shared Elementor template.');
+            if($writer&&Shared_Templates::supported($document)&&empty(Policy::settings()['shared_templates']))return new \WP_Error('shared_template_denied','Shared-template editing is disabled. This document may affect many pages.');
         }
+        if($name==='calicomcp/organization-update')return Entity_Recovery::run($ability,$args);
         if($name==='calicomcp/term-update')return Entity_Recovery::run($ability,$args);
         if($name==='calicomcp/term-create')return $ability->execute($args);
         if($name==='calicomcp/term-get')return $ability->execute($args);
@@ -104,7 +107,8 @@ class Guard {
             $event_seo=in_array(Policy::group($name),array('seo','seo_advanced'),true) && $post && !in_array($post->post_type,array('post','page','attachment'),true) && Events::is_selected_type($post->post_type);
             $event=(in_array($name,array('calicomcp/event-update-draft','calicomcp/cpt-update-draft','calicomcp/cpt-update','calicomcp/cpt-repeater-rows'),true) && $post && Events::is_selected_type($post->post_type)) || $event_seo;
             $structural=$post&&in_array(Policy::group($name),array('structure','terms'),true)&&Toolbox::content_type($post);
-            if(!$post || (!$event && !$structural && !in_array($post->post_type,array('post','page','attachment'),true))) { return new \WP_Error('unsupported_content_type','Use a supported content type or selected custom draft.'); }
+            $shared=$post&&Policy::group($name)==='elementor_full'&&Shared_Templates::supported($post)&&!empty(Policy::settings()['shared_templates']);
+            if(!$post || (!$event && !$structural && !$shared && !in_array($post->post_type,array('post','page','attachment'),true))) { return new \WP_Error('unsupported_content_type','Use a supported content type or selected custom draft.'); }
             if($event&&!Policy::editable_status($post,$event_seo||in_array($name,array('calicomcp/cpt-update','calicomcp/cpt-repeater-rows'),true)))return new \WP_Error('content_status_denied','This tool requires a draft, or separate permission for already-published custom content. Legacy draft tools remain draft-only.');
             if(in_array(Policy::group($name),array('seo','seo_advanced'),true)) { $allowed=self::seo_meta($name,$args,$id,$event_seo); if(is_wp_error($allowed)) { return $allowed; } }
             if(Policy::group($name)==='elementor_full')foreach(array('_elementor_data','_elementor_edit_mode','_elementor_version','_elementor_template_type') as $meta_key)if(!Events::can_edit_meta($id,$meta_key))return new \WP_Error('elementor_meta_denied','Elementor metadata authorization refused.');
@@ -130,6 +134,7 @@ class Guard {
                 $resultId=$name==='calicomcp/content-duplicate'?self::subject($result):($id?:self::subject($result));
                 if($resultId && get_post($resultId)) { $result['revision']=self::revision(self::snapshot($resultId)); }
                 if($backup) { $result['recovery_id']=$backup; }
+                if($id&&Shared_Templates::supported(get_post($id)))$result['shared_template_note']='This shared document may affect multiple pages. Its assignment and display conditions are preserved; verify rendered output separately.';
             } elseif(is_wp_error($result) && $backup) { $result->add_data(array('recovery_id'=>$backup)); }
             return $result;
         } finally { if($lock) { self::unlock($lock); } }

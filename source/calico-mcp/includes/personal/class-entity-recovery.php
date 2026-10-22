@@ -3,9 +3,9 @@ namespace CalicoMCP\Personal;
 if (!defined('ABSPATH')) { exit; }
 /** Recovery for non-post entities; never interpret a term or form entry ID as a post. */
 class Entity_Recovery {
-    public static function handles($tool) { return in_array($tool,array('calicomcp/term-update','calicomcp/gf-mark-entry-read','calicomcp/gf-mark-entry-unread','calicomcp/gf-trash-entry','calicomcp/gf-restore-entry-from-trash'),true); }
+    public static function handles($tool) { return in_array($tool,array('calicomcp/organization-update','calicomcp/term-update','calicomcp/gf-mark-entry-read','calicomcp/gf-mark-entry-unread','calicomcp/gf-trash-entry','calicomcp/gf-restore-entry-from-trash'),true); }
     // Recognize old entry records so their numeric IDs can never become post IDs.
-    public static function provider($tool) { return $tool==='calicomcp/term-update'?Taxonomies::class:null; }
+    public static function provider($tool) { return $tool==='calicomcp/organization-update'?Organization::class:($tool==='calicomcp/term-update'?Taxonomies::class:null); }
     public static function run($ability,$args) {
         $tool=$ability->get_name(); $provider=self::provider($tool);
         if(!$provider)return new \WP_Error('integration_removed','Gravity Forms integration was removed. Existing recovery records are retained; no entry was changed.');

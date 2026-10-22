@@ -23,7 +23,7 @@ class Admin {
         self::permission('calicomcp_save');
         if(Bootstrap::conflict()) { wp_die('Deactivate miniOrange MCP before enabling this prototype.'); }
         $new=array('owner'=>get_current_user_id(),'enabled'=>isset($_POST['enabled']),'content'=>isset($_POST['content']),'media'=>isset($_POST['media']),'seo'=>isset($_POST['seo']),'events'=>isset($_POST['events']),'elementor'=>isset($_POST['elementor']),'event_types'=>Events::available()?Events::clean_scope(wp_unslash($_POST['event_types']??array())):Events::scope());
-        foreach(array('structure','terms','seo_advanced','elementor_full','published','repeater_rows') as $key)$new[$key]=isset($_POST[$key]);
+        foreach(array('structure','terms','seo_advanced','elementor_full','published','repeater_rows','shared_templates','organization') as $key)$new[$key]=isset($_POST[$key]);
         // Preserve inert legacy flags without changing saved access on update.
         $old=Policy::settings();foreach(array('forms_read','forms_edit')as $key)if(array_key_exists($key,$old))$new[$key]=$old[$key];
         if(isset($_POST['import_bridge'])) {
@@ -42,6 +42,13 @@ class Admin {
         self::permission('calicomcp_revoke_'.$client);
         if(!Store::get_client($client) || !Policy::revoke($client)) { wp_die('Revocation could not be confirmed.'); }
         self::back('revoked');
+    }
+    public static function recover_owner() {
+        if(!current_user_can('manage_options') || ($_SERVER['REQUEST_METHOD']??'')!=='POST')wp_die('Administrator POST required.','',array('response'=>403));
+        check_admin_referer('calicomcp_recover_owner');
+        $result=Policy::recover_owner(absint($_POST['previous_owner']??0));
+        if(is_wp_error($result))wp_die(esc_html($result->get_error_message()),'',array('response'=>403));
+        self::back('owner_recovered');
     }
     public static function undo() {
         $id=isset($_POST['recovery_id'])?absint($_POST['recovery_id']):0;
@@ -66,19 +73,28 @@ class Admin {
         $can_manage=!$s['owner']||Policy::is_owner(get_current_user_id());
         echo '<div class="wrap cmcp"><style>.cmcp{max-width:1100px}.cmcp .cmcp-head{display:flex;justify-content:space-between;align-items:center;margin:22px 0}.cmcp h1{font-size:30px;font-weight:650}.cmcp .cmcp-grid{display:grid;grid-template-columns:1.25fr 1fr;gap:20px}.cmcp .cmcp-card{background:#fff;border:1px solid #dcdcde;border-radius:10px;padding:22px;margin-bottom:20px}.cmcp h2{margin-top:0}.cmcp label{display:block;margin:15px 0;line-height:1.6}.cmcp details{margin:14px 0}.cmcp summary{cursor:pointer;font-weight:600;line-height:1.6}.cmcp code{overflow-wrap:anywhere}.cmcp .cmcp-head{gap:16px;flex-wrap:wrap}.cmcp .cmcp-muted{color:#646970}.cmcp .cmcp-pill{background:#e9f3ee;color:#165a35;padding:6px 12px;border-radius:20px}.cmcp .cmcp-pill.off{background:#f0f0f1;color:#50575e}.cmcp input[type=url]{width:100%;font-family:monospace}.cmcp table{width:100%;border-collapse:collapse}.cmcp th,.cmcp td{text-align:left;padding:11px 8px;border-bottom:1px solid #eee;vertical-align:top}.cmcp .cmcp-inline{margin:0}.cmcp .cmcp-inline .submit{margin:0;padding:0}@media(max-width:850px){.cmcp .cmcp-grid{grid-template-columns:1fr}.cmcp .cmcp-card{overflow-x:auto}}</style>';
         $access_enabled=Policy::enabled()&&!Bootstrap::conflict();
-        $edit_labels=array('content'=>'Content','media'=>'Media','seo'=>'Yoast SEO','events'=>'Custom content','elementor'=>'Elementor widget drafts','structure'=>'Duplication/templates/revisions','terms'=>'Categories and tags','seo_advanced'=>'Advanced Yoast','elementor_full'=>'Full Elementor','published'=>'Published item permission','repeater_rows'=>'Repeater row operations');
+        $edit_labels=array('content'=>'Content','media'=>'Media','seo'=>'Yoast SEO','events'=>'Custom content','elementor'=>'Elementor widget drafts','structure'=>'Duplication/templates/revisions','terms'=>'Categories and tags','seo_advanced'=>'Advanced Yoast','elementor_full'=>'Full Elementor','published'=>'Published item permission','repeater_rows'=>'Repeater row operations','shared_templates'=>'Shared Elementor templates','organization'=>'Yoast organization social profiles');
         $editing=array(); foreach($edit_labels as $key=>$label) { if(!empty($s[$key])) { $editing[]=$label; } }
         echo '<div class="cmcp-head"><div><h1>Calico MCP</h1><p class="cmcp-muted">Your direct connection to WordPress · '.esc_html(CALICOMCP_VERSION).'</p></div><span class="cmcp-pill '.($access_enabled?'':'off').'">'.esc_html($access_enabled?($editing?'Editing allowed':'Read-only access'):'Access disabled').'</span></div>';
         $notice=isset($_GET['notice'])?sanitize_key($_GET['notice']):'';
         $notices=array('saved'=>'Access settings saved. Reconnect your AI client if permissions changed.','revoked'=>'Connection revoked. Its authorization codes and access and refresh tokens were removed.','restored'=>'The edit was undone and the restored fields were verified.');
         if(isset($notices[$notice])) { echo '<div class="notice notice-success"><p>'.esc_html($notices[$notice]).'</p></div>'; }
-        if(!$can_manage) { echo '<div class="notice notice-warning"><p>Calico MCP is configured for another administrator account. Sign in with that account to manage it.</p></div></div>'; return; }
+        if($notice==='owner_recovered')echo '<div class="notice notice-success"><p>Ownership recovered. Saved editing and custom content choices were preserved. Old connections were revoked. AI access is disabled; review your choices before enabling access and reconnecting.</p></div>';
+        if(!$can_manage) {
+            if(!$owner && (int)$s['owner']>0) {
+                echo '<div class="cmcp-card"><h2>Recover ownership</h2><p>The configured administrator account has been deleted. Recover ownership using your current administrator account. Saved editing and custom content choices will be preserved, old connections will be revoked, and AI access will remain disabled until you explicitly enable it.</p>';
+                self::form('calicomcp_recover_owner','calicomcp_recover_owner');
+                echo '<input type="hidden" name="previous_owner" value="'.esc_attr((int)$s['owner']).'">';
+                submit_button('Recover ownership'); echo '</form></div>';
+            } else echo '<div class="notice notice-warning"><p>Calico MCP is configured for another administrator account. Sign in with that account to manage it.</p></div>';
+            echo '</div>'; return;
+        }
         echo '<div class="cmcp-grid"><div class="cmcp-card"><h2>Your access</h2><p>'.($owner?'WordPress account: <strong>'.esc_html($owner->display_name).'</strong>.':'Save these settings to use your current account.').'</p><p>'.esc_html($access_enabled?($editing?'Editing allowed: '.implode(', ',$editing).'.':'Read-only: your AI app can read selected content. All editing is off.'):'AI access is disabled. Saved editing choices apply when you enable access.').'</p>';
         self::form('calicomcp_save','calicomcp_save');
         echo '<label><input type="checkbox" name="enabled" value="1" '.checked(!empty($s['enabled']),true,false).'> Enable AI access to this website</label><details data-cmcp-selection="editing"'.($editing?' open':'').'><summary>Optional editing permissions</summary>';
         self::selection_buttons('optional editing permissions');
         echo '<p class="cmcp-muted">Select all includes published-item editing. Review choices before Save access; these buttons do not save or change the live connection.</p>';
-        foreach(array('content'=>'Allow content edits','media'=>'Allow media uploads and edits','seo'=>'Allow Yoast SEO edits','events'=>'Allow custom content creation and edits','elementor'=>'Allow Elementor draft text and image edits','structure'=>'Allow draft duplication, template assignment and revision restoration','terms'=>'Allow category and tag management','seo_advanced'=>'Allow advanced Yoast SEO controls','elementor_full'=>'Allow full Elementor layout and style editing','published'=>'Also allow edits to already-published custom content and Elementor posts/pages','repeater_rows'=>'Allow appending, removing and reordering selected repeater rows') as $key=>$label) {
+        foreach(array('content'=>'Allow content edits','media'=>'Allow media uploads and edits','seo'=>'Allow Yoast SEO edits','events'=>'Allow custom content creation and edits','elementor'=>'Allow Elementor draft text and image edits','structure'=>'Allow draft duplication, template assignment and revision restoration','terms'=>'Allow category and tag management','seo_advanced'=>'Allow advanced Yoast SEO controls','elementor_full'=>'Allow full Elementor layout and style editing','published'=>'Also allow edits to already-published custom content and Elementor posts/pages','repeater_rows'=>'Allow appending, removing and reordering selected repeater rows','shared_templates'=>'Allow shared Elementor template edits (requires Full Elementor; published templates also need published permission)','organization'=>'Allow site-wide Yoast organization social profile edits') as $key=>$label) {
             echo '<label><input type="checkbox" name="'.esc_attr($key).'" value="1" '.checked(!empty($s[$key]),true,false).'> '.esc_html($label).'</label>';
         }
         echo '<p class="cmcp-muted">New content and duplicates stay as drafts. Published-item permission works only alongside custom content or full Elementor editing; those edits affect live content immediately and preserve its status. Selected custom content SEO also needs custom editing and the applicable Yoast permission. Repeater row operations also need custom editing. Template/revision restoration and legacy draft tools stay draft-only. Core content, media, terms and SEO changes may affect the live site.</p></details><p class="cmcp-muted">Changing access settings revokes existing connections. Reconnect your AI app afterward.</p><details><summary>Select custom content types and fields</summary>';
@@ -96,7 +112,7 @@ class Admin {
         $backups=Recovery::recent();
         if(!$backups) { echo '<p>No edits to undo yet.</p>'; }
         else { echo '<table><thead><tr><th>Item</th><th>Edit</th><th></th></tr></thead><tbody>'; foreach($backups as $row) {
-            $label=Entity_Recovery::handles($row['tool'])?($row['tool']==='calicomcp/term-update'?'Taxonomy term ':'Removed integration record ').$row['post_id']:get_the_title((int)$row['post_id']);
+            $label=Entity_Recovery::handles($row['tool'])?($row['tool']==='calicomcp/organization-update'?'Yoast organization social profiles':($row['tool']==='calicomcp/term-update'?'Taxonomy term ':'Removed integration record ').$row['post_id']):get_the_title((int)$row['post_id']);
             echo '<tr><td>'.esc_html($label).'</td><td>'.esc_html(ucwords(str_replace(array('calicomcp/','-'),array('',' '),$row['tool']))).'<details><summary>Tool details</summary><code>'.esc_html($row['tool']).'</code></details>'.esc_html(wp_date('M j g:i a',(int)$row['created'])).'</td><td>';
             if(Entity_Recovery::handles($row['tool'])&&!Entity_Recovery::provider($row['tool']))echo '<span class="cmcp-muted">Integration removed; record retained.</span>';
             else { self::form('calicomcp_undo','calicomcp_undo_'.$row['id']);echo '<input type="hidden" name="recovery_id" value="'.esc_attr($row['id']).'">';submit_button('Undo edit','secondary','submit',false); echo '</form>'; }
@@ -109,3 +125,5 @@ class Admin {
         echo '<details><summary>Connection troubleshooting</summary>'; Diagnostics::render(); echo '</details></div>';
     }
 }
+
+

@@ -7,12 +7,27 @@ if (!defined('ABSPATH')) { exit; }
 class Policy {
     const OPTION = 'calicomcp_personal_settings';
     public static function settings() {
-        return wp_parse_args((array)get_option(self::OPTION, array()), array('owner'=>0,'enabled'=>false,'content'=>false,'media'=>false,'seo'=>false,'events'=>false,'elementor'=>false,'structure'=>false,'terms'=>false,'seo_advanced'=>false,'elementor_full'=>false,'published'=>false,'repeater_rows'=>false,'event_types'=>array()));
+        return wp_parse_args((array)get_option(self::OPTION, array()), array('shared_templates'=>false,'organization'=>false,'owner'=>0,'enabled'=>false,'content'=>false,'media'=>false,'seo'=>false,'events'=>false,'elementor'=>false,'structure'=>false,'terms'=>false,'seo_advanced'=>false,'elementor_full'=>false,'published'=>false,'repeater_rows'=>false,'event_types'=>array()));
     }
     public static function enabled() { $s=self::settings(); $site=wp_parse_url(home_url()); $secure=($site['scheme']??'')==='https' || in_array($site['host']??'',array('127.0.0.1','localhost','::1'),true); return $secure && !empty($s['enabled']) && self::is_owner((int)$s['owner']); }
     public static function is_owner($id) { $s=self::settings(); return $id>0 && (int)$s['owner']===$id && user_can($id,'manage_options'); }
+    public static function recover_owner($expected_owner) {
+        $s=self::settings();
+        if(!current_user_can('manage_options') || !(int)$s['owner'] || (int)$s['owner']!==(int)$expected_owner || get_userdata((int)$s['owner'])) {
+            return new \WP_Error('owner_recovery_forbidden','Ownership can only be recovered by an administrator after the configured account has been deleted.');
+        }
+        if(!self::revoke_all())return new \WP_Error('revoke_failed','Existing connections could not be revoked. Ownership was not changed.');
+        $s['owner']=get_current_user_id();
+        $s['enabled']=false;
+        update_option(self::OPTION,$s,false);
+        if((int)self::settings()['owner']!==get_current_user_id() || !self::sync())return new \WP_Error('policy_failed','Recovery could not be fully verified. AI access remains disabled.');
+        return true;
+    }
     public static function groups() {
         return array(
+            'organization_read'=>array('organization-get'),
+            'organization'=>array('organization-update'),
+            'shared_read'=>array('shared-template-list'),
             'structure_read'=>array('content-template-get','content-revision-compare','taxonomy-list','term-list','term-get','cpt-discover','bridge-import-preview','cpt-schema','cpt-list','cpt-get','cpt-terms'),
             'structure'=>array('content-duplicate','content-template-set','content-revision-restore'),
             'terms'=>array('term-create','term-update','content-set-terms'),
@@ -39,11 +54,13 @@ class Policy {
     public static function allowed($name) {
         if(!self::enabled()) { return false; }
         $group=self::group($name); $settings=self::settings();
+        if(in_array($group,array('organization','organization_read'),true)&&(!defined('WPSEO_VERSION')||!class_exists('WPSEO_Options')))return false;
+        if($group==='shared_read'&&!Elementor::available())return false;
         if($group==='repeater_rows'&&empty($settings['events']))return false;
         if(in_array($group,array('elementor_read','elementor','elementor_full_read','elementor_full'),true) && !Elementor::available()) { return false; }
-        return in_array($group,array('read','structure_read','elementor_full_read','elementor_read'),true) || ($group!==null && !empty($settings[$group]));
+        return in_array($group,array('read','structure_read','elementor_full_read','elementor_read','organization_read','shared_read'),true) || ($group!==null && !empty($settings[$group]));
     }
-    public static function writer($name) { $group=self::group($name); return $group!==null && !in_array($group,array('read','structure_read','elementor_read','elementor_full_read'),true); }
+    public static function writer($name) { $group=self::group($name); return $group!==null && !in_array($group,array('read','structure_read','elementor_read','elementor_full_read','organization_read','shared_read'),true); }
     public static function editable_status($post,$allow_published=false) {
         return $post&&($post->post_status==='draft'||($allow_published&&$post->post_status==='publish'&&!empty(self::settings()['published'])));
     }
@@ -58,7 +75,7 @@ class Policy {
     public static function sync() {
         $settings=self::settings(); $names=array();
         foreach(self::groups() as $group=>$slugs) {
-            if(in_array($group,array('read','structure_read','elementor_read','elementor_full_read'),true) || !empty($settings[$group])) {
+            if(in_array($group,array('read','structure_read','elementor_read','elementor_full_read','organization_read','shared_read'),true) || !empty($settings[$group])) {
                 foreach($slugs as $slug) { $names[]='calicomcp/'.$slug; }
             }
         }
@@ -79,9 +96,14 @@ class Policy {
     }
     public static function revoke_all() {
         global $wpdb;
-        $ids=$wpdb->get_col('SELECT client_id FROM '.Store::table('clients'));
-        if($wpdb->last_error) { return false; }
-        foreach((array)$ids as $id) { if(!self::revoke($id)) { return false; } }
+        // DCR clients are durable application identities. Revoke user sessions,
+        // including orphan credentials, without breaking the client's next login.
+        foreach(array('tokens','codes')as $key){
+            if($wpdb->query('DELETE FROM '.Store::table($key))===false)return false;
+            $left=$wpdb->get_var('SELECT COUNT(*) FROM '.Store::table($key));
+            if($left===null||(int)$left!==0)return false;
+        }
+        delete_transient(Store::SUMMARY_TRANSIENT);
         return true;
     }
     public static function registration_allowed() {
@@ -95,3 +117,4 @@ class Policy {
         return true;
     }
 }
+

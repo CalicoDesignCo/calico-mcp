@@ -21,6 +21,7 @@ class Bootstrap {
         add_action('admin_menu',array(Admin::class,'menu'));
         add_action('admin_enqueue_scripts',array(Admin::class,'assets'));
         add_action('admin_post_calicomcp_save',array(Admin::class,'save'));
+        add_action('admin_post_calicomcp_recover_owner',array(Admin::class,'recover_owner'));
         add_action('admin_post_calicomcp_revoke',array(Admin::class,'revoke'));
         add_action('admin_post_calicomcp_undo',array(Admin::class,'undo'));
         add_action('admin_post_calicomcp_diagnose',array(Admin::class,'diagnose'));
