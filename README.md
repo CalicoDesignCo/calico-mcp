@@ -1,38 +1,43 @@
 # Calico MCP
 
-Direct WordPress MCP tools for one configured administrator. Skills supply workflow instructions; this connector supplies authenticated site operations.
+Direct WordPress MCP tools for one configured administrator. Skills supply workflow instructions; the connector supplies authenticated site operations.
 
-Version: **0.1.0-beta.29**. This is a beta release for staging evaluation. Download the **calico-mcp.zip** release asset, not GitHub's automatic source archive.
+Version: **0.1.0-beta.32**, for staging evaluation. Install the **calico-mcp.zip** release asset, not GitHub's automatic source archive.
 
-Adds Select all / Clear all for optional editing permissions, all custom content and each content-type block. Choices remain unsaved until Save access.
+Beta32 fixes unrelated stored addon settings being omitted during Elementor saves. It retains only existing unchanged settings on the same element identity/type, preserves explicit removals, and refuses unexpected changes to unrelated controls. New or changed values still use Elementor's normal save path.
 
 ## Included
 
-- Posts/pages, media and metadata; draft creation and precise edits.
-- Registered CPT/JetEngine field discovery, selected custom content and taxonomies; optional Bridge selection import.
-- Standalone native JetEngine Advanced Date, declared static radio/select choices and supported generic repeater operations.
-- Duplication into drafts, registered templates, categories/tags and supported native WordPress revision management.
-- Legacy Elementor content/style/layout operations, complete page-setting preservation and guarded Undo.
-- Yoast metadata and advanced per-item controls.
+- WordPress posts/pages, media and metadata; new content and duplicates remain drafts.
+- Registered CPT/JetEngine field discovery, selected custom fields and taxonomies, optional Bridge selection import, standalone native dates and supported repeater operations.
+- Duplication, registered page templates, categories/tags and supported WordPress draft revisions.
+- Legacy Elementor content/style/layout tools, guarded edits and administrator Undo.
+- Existing shared Elementor library, JetThemeCore and Essential Addons documents through full Elementor tools. Shared editing defaults off; published shared documents also need published-item permission. Assignment/display conditions are not exposed as editing tools.
+- Yoast per-item metadata and advanced controls, plus separately enabled organization social-profile patches. Organization identity, logos and arbitrary options are not exposed.
+- Deleted-account ownership recovery that preserves selections and leaves access disabled. Permission changes revoke codes/tokens while retaining durable client registrations for fresh login. Explicit Revoke removes the selected registration too.
 
-Gravity Forms integration is removed. No publishing, scheduling, user administration, theme-file editing, arbitrary REST execution or permanent deletion tools are exposed. No Jet Engine Dynamic Calendar Post Repeater integration is included.
+Gravity Forms integration and Jet Engine Dynamic Calendar Post Repeater are excluded. No publishing, scheduling, permanent deletion, user administration, theme-file editing, arbitrary REST execution or atomic Elementor layout editing tools are exposed.
 
 ## Install and connect
 
-Requires WordPress 6.9+ and PHP 7.4+. Start on staging with a site backup. Deactivate miniOrange MCP before activation because both own OAuth discovery paths. Install calico-mcp.zip through Plugins -> Add Plugin -> Upload Plugin. Enable Calico MCP for the intended administrator and begin read-only. Select supported CPT fields/taxonomies, copy the displayed MCP Connection URL into your client and complete WordPress login/consent.
+Requires WordPress6.9+ and PHP7.4+. Start on staging with a backup. Deactivate miniOrange MCP before activation because both use the same OAuth discovery paths. Install calico-mcp.zip through Plugins → Add Plugin → Upload Plugin. Enable access for the intended administrator and begin read-only. Select needed custom fields/taxonomies, copy the displayed Connection URL into the AI client, then complete WordPress login and consent.
 
-Permission changes revoke existing connections. Published-item edits require an extra permission and affect public content immediately; new items remain drafts. Existing edits require a fresh revision token. Calico Undo is available for 30 days and refuses newer work. Native WordPress revision restoration is refused for Elementor documents/revisions because its hooks can restore layout beyond the core comparison; use Calico Undo or Elementor History manually.
+Editing is optional. Select all/Clear all changes form choices only until Save access. Published-item editing affects live content immediately and requires its extra permission. Existing-item edits require a fresh expected_revision. Calico Undo retains recovery for30 days and refuses newer work. Native WordPress revision restoration refuses Elementor documents/revisions; use Calico Undo or Elementor History manually.
 
 ## Updates
 
-The public release channel needs no GitHub token. Numbered beta releases are intentionally included. WordPress Plugins or Dashboard -> Updates -> Check again discovers newer releases. Downloads use an exact version-pinned calico-mcp.zip asset and verify the GitHub SHA256 digest before installation. Automatic installation is not enabled by this plugin. Hosts must allow outbound HTTPS to GitHub. Failed checks leave the installed plugin usable.
+Public GitHub checks require no token. Numbered beta releases are intentionally included. WordPress Plugins or Dashboard → Updates → Check again retrieves newer releases. Updates use an exact version-pinned asset and check its GitHub SHA256 digest. Automatic installation is not forced. Hosts must allow outbound HTTPS to GitHub; failed checks leave installed code usable.
 
-Install beta 28 or newer manually once to bootstrap updates from older versions. Back up before updates; preserve the previous ZIP for code rollback. Settings/data survive code updates. Restore content separately with Calico Undo, Elementor History or a site backup.
+Older installations without the updater need one manual beta28-or-newer installation. Settings/data survive code updates. Permission changes expire existing sessions; reconnect afterward. Explicitly revoking an app forgets its registration; already-deleted client registrations cannot be rebuilt automatically.
 
-## Verification
+## Verification and limits
 
-The exact package passed 171 local checks: 45 core OAuth/content/media/Yoast/recovery plus 126 retained capability/removal/updater checks. Tests use disposable WordPress 7.1.3/PHP 8.3, actual Elementor 4.3.4 and Yoast 28.7. Updater transport tests substitute GitHub responses; a separate native upgrader trial exercises beta 28 to beta 29 with exact ZIPs. These local tests do not claim live delivery or exhaustive third-party widget compatibility. See verification-summary.json.
+The exact beta32 package passed217 local integration checks:45 core OAuth/content/media/Yoast/recovery and172 retained-feature checks. All86 PHP files parse under PHP7.4 and PHP8.3. Local runtime: WordPress7.1.3/PHP8.3, real Elementor4.3.4 and Yoast28.7. Addon omission is simulated through an Elementor save hook in the regression fixture.
+
+A separately approved host test with installed Elementor4.3.2/Pro and addons passed14 checks: native header edit, unchanged mask/layout settings, stale-write refusal, unchanged published source, exact layout Undo, and test credential revocation. Existing access choices and app registration were preserved. Earlier scoped footer and Yoast organization edit/Undo trials passed on beta31. These tests do not establish universal addon/widget compatibility or rendered public-schema/cache behavior. Undo may change WordPress timestamps even when the exact layout is restored.
+
+The ordinary WordPress GitHub upgrade flow was previously verified from beta28 to beta29. Beta32 was installed manually for its host retest; a beta32 native GitHub upgrade is a separate check. See verification-summary.json and CHANGELOG.md.
 
 ## License
 
-MIT/Expat-derived independent software. Preserve LICENSE and source/calico-mcp/UPSTREAM-NOTICES.md. No miniOrange gateway, account or license is required.
+Independent MIT/Expat-derived software. Preserve LICENSE and source/calico-mcp/UPSTREAM-NOTICES.md. No miniOrange gateway, account or license is required.
