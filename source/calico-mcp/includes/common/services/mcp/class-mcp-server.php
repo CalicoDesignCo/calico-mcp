@@ -359,7 +359,7 @@ class MCP_Server {
 		// (ChatGPT does, especially when structuredContent is present), whereas
 		// `instructions` is the field the protocol provides for telling the model
 		// something about the server itself.
-		$result['instructions']='Calico MCP connects directly to this WordPress site. New content is draft-only. Before editing an existing item, read it and pass its revision as expected_revision. Editing published content changes the live site. Use the supplied schemas.';
+		$result['instructions']='Calico MCP connects directly to this WordPress site. Creation makes drafts. Publishing, scheduling and status changes use separate opt-in tools and require explicit user authorization. Scheduling needs an exact timestamp with timezone; event dates are separate. Status changes can trigger external notifications that Undo cannot retract. Before editing an existing item, read it and pass its revision as expected_revision. Editing published content changes the live site. Use the supplied schemas.';
 
 		if ( Debug_Logger::is_capturing() ) {
 			$requested = isset( $params['protocolVersion'] ) ? (string) $params['protocolVersion'] : '';
@@ -388,6 +388,8 @@ class MCP_Server {
 		$tools     = array();
 		$abilities = self::exposed_abilities();
 
+		$available = array_map(static function($a){return $a->get_name();},$abilities);
+		$abilities = array_values(array_filter($abilities,static function($a)use($available){return \CalicoMCP\Personal\Policy::listed($a->get_name(),$available);}));
 		foreach ( $abilities as $ability ) {
 			$tools[] = self::ability_to_tool( $ability );
 		}
