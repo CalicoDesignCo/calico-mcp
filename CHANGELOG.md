@@ -12,6 +12,21 @@ Allow explicit ownership recovery when the configured WordPress account no longe
 
 # Changelog
 
+## 0.1.0-beta.36 - October 27, 2026
+
+- Preserve existing local/GMT publication dates for ordinary edits, including unpublished items with an unset GMT date; scope the guard to the exact item and remove it after the operation. Explicit publishing/scheduling retains date control.
+- Verify dates and publication cron on ordinary writes. 430 exact-package local checks and 27 focused hosted checks passed.
+
+## Changes since beta32
+
+- Add separately gated publishing, scheduling/rescheduling and Draft/Pending/Private status changes. Creation and duplication still produce drafts; no access is enabled automatically.
+- Extend supported CPT, repeater, taxonomy, Yoast and full Elementor edits to explicitly enabled Pending/Private/Scheduled statuses; published editing remains independent.
+- Add native Trash and Restore to Draft, registered-template assignment across enabled statuses and custom-field support explanations.
+- Simplify setup groups and discovery while retaining cached compatibility aliases and existing grants.
+- Preserve schedules and refuse imminent scheduled edits. Trash uses native retention and refuses disabled retention. Native Trash/Restore uses WordPress recovery, not a Calico Undo checkpoint.
+
+
+
 ## 0.1.0-beta.29
 
 - Add unsaved Select all/Clear all controls for optional editing, all custom content, and each content-type block.

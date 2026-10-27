@@ -1,9 +1,15 @@
 {
-  "Version": "0.1.0-beta.32",
-  "CoreChecks": 45,
-  "RetainedChecks": 172,
-  "FocusedHostChecks": 14,
+  "Version": "0.1.0-beta.36",
+  "Checks": 430,
+  "FocusedHostChecks": 27,
   "Passed": true,
-  "PackageSHA256": "6862df1b3013d79f97c42ba283450eadcb73039f40ab1167b855c6526af8b411",
-  "Boundary": "Disposable WordPress7.1.3/PHP8.3 with actual Elementor4.3.4 and Yoast28.7. Scoped native header trial on an approved host with Elementor4.3.2/Pro/addons. Not universal widget certification. Native GitHub upgrade into beta32 is separate from its manual host installation."
+  "PackageSHA256": "1B95246DEA20B138978337A8B6F194276020F71E530F3C1C0302104EAE4FC326",
+  "PHP": [
+    "7.4.33",
+    "8.3"
+  ],
+  "WordPress": "7.1.3",
+  "Elementor": "4.3.4",
+  "Yoast": "28.7",
+  "Boundary": "Exact ZIP local integration and focused hosted retest passed. Hosted installation was manual; a live GitHub Dashboard upgrade into this version is a separate outstanding check. No universal widget compatibility or external notification rollback claim."
 }

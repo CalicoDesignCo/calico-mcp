@@ -2,13 +2,16 @@
 
 Direct WordPress MCP tools for one configured administrator. Skills supply workflow instructions; the connector supplies authenticated site operations.
 
-Version: **0.1.0-beta.32**, for staging evaluation. Install the **calico-mcp.zip** release asset, not GitHub's automatic source archive.
+Version: **0.1.0-beta.36**, for staging evaluation. Install the **calico-mcp.zip** release asset, not GitHub's automatic source archive.
 
-Beta32 fixes unrelated stored addon settings being omitted during Elementor saves. It retains only existing unchanged settings on the same element identity/type, preserves explicit removals, and refuses unexpected changes to unrelated controls. New or changed values still use Elementor's normal save path.
+Beta36 preserves local and GMT publication dates during ordinary existing-item edits, including unpublished items with an unset GMT date. Explicit publication tools retain control of dates. It includes the independently gated publication and content-management features added since beta32.
 
 ## Included
 
-- WordPress posts/pages, media and metadata; new content and duplicates remain drafts.
+- WordPress posts/pages, media and metadata; creation and duplication remain drafts. Separate default-off permissions allow Publish, Schedule/reschedule and status changes to Draft, Pending Review or Private.
+- Guarded CPT, repeater, taxonomy, Yoast and full Elementor edits across explicitly enabled statuses. Published editing remains a separate permission. Scheduled edits preserve dates/cron and refuse items due within two minutes.
+- Separately gated native Trash and Restore to Draft, plus registered-template assignment on enabled existing-item statuses. No permanent-delete tool; site Trash retention still applies.
+- Custom-field support explanations and simpler permission groups. Redundant aliases are hidden only when an authorized replacement is available; cached aliases retain their original access checks.
 - Registered CPT/JetEngine field discovery, selected custom fields and taxonomies, optional Bridge selection import, standalone native dates and supported repeater operations.
 - Duplication, registered page templates, categories/tags and supported WordPress draft revisions.
 - Legacy Elementor content/style/layout tools, guarded edits and administrator Undo.
@@ -16,7 +19,7 @@ Beta32 fixes unrelated stored addon settings being omitted during Elementor save
 - Yoast per-item metadata and advanced controls, plus separately enabled organization social-profile patches. Organization identity, logos and arbitrary options are not exposed.
 - Deleted-account ownership recovery that preserves selections and leaves access disabled. Permission changes revoke codes/tokens while retaining durable client registrations for fresh login. Explicit Revoke removes the selected registration too.
 
-Gravity Forms integration and Jet Engine Dynamic Calendar Post Repeater are excluded. No publishing, scheduling, permanent deletion, user administration, theme-file editing, arbitrary REST execution or atomic Elementor layout editing tools are exposed.
+Gravity Forms integration and Jet Engine Dynamic Calendar Post Repeater are excluded. No permanent deletion, user administration, theme-file editing, arbitrary REST execution or atomic Elementor layout editing tools are exposed.
 
 ## Install and connect
 
@@ -32,11 +35,11 @@ Older installations without the updater need one manual beta28-or-newer installa
 
 ## Verification and limits
 
-The exact beta32 package passed217 local integration checks:45 core OAuth/content/media/Yoast/recovery and172 retained-feature checks. All86 PHP files parse under PHP7.4 and PHP8.3. Local runtime: WordPress7.1.3/PHP8.3, real Elementor4.3.4 and Yoast28.7. Addon omission is simulated through an Elementor save hook in the regression fixture.
+The exact beta36 ZIP passed 430 local integration checks: 116 focused content-management/date checks, 212 retained-feature checks, 45 core OAuth/content/media/Yoast checks and 57 publication-lifecycle checks. All 89 PHP files parse under PHP7.4.33 and PHP8.3. Local runtime: WordPress7.1.3/PHP8.3 with real Elementor4.3.4 and Yoast28.7.
 
-A separately approved host test with installed Elementor4.3.2/Pro and addons passed14 checks: native header edit, unchanged mask/layout settings, stale-write refusal, unchanged published source, exact layout Undo, and test credential revocation. Existing access choices and app registration were preserved. Earlier scoped footer and Yoast organization edit/Undo trials passed on beta31. These tests do not establish universal addon/widget compatibility or rendered public-schema/cache behavior. Undo may change WordPress timestamps even when the exact layout is restored.
+A focused hosted beta36 test passed 27 checks, including Pending title edits with populated and unset GMT dates, exact date/cron preservation, stale-write refusal and administrator Undo. Test items ended as drafts, original access choices were restored and temporary credentials were revoked. Earlier scoped publication, content-management, shared-template and organization-profile tests are retained evidence; this does not certify every plugin/widget or external notification/cache behavior. Undo cannot retract notifications triggered by publication.
 
-The ordinary WordPress GitHub upgrade flow was previously verified from beta28 to beta29. Beta32 was installed manually for its host retest; a beta32 native GitHub upgrade is a separate check. See verification-summary.json and CHANGELOG.md.
+The native GitHub update flow was previously verified from beta28 to beta29. Beta36 was installed manually for its hosted retest; a live Dashboard upgrade into beta36 has not yet been performed. See verification-summary.json and CHANGELOG.md.
 
 ## License
 
