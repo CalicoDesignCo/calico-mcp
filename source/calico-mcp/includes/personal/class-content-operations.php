@@ -10,7 +10,7 @@ class Content_Operations extends Ability_Pack {
         $specs=array(
             array('content-duplicate','Copy an existing post/page/selected CPT, including its design metadata and terms, into a new draft. Read the source immediately before copying.',$id+array('title'=>Toolbox::text()),array('id'),'duplicate',false),
             array('content-template-get','Read the assigned template and registered choices.',$id,array('id'),'template_get',true),
-            array('content-template-set','Assign a registered template to an existing draft, preserving other metadata.',$id+array('template'=>Toolbox::text()),array('id','template'),'template_set',false),
+            array('content-template-set','Assign a registered template without changing status, content or schedule. Non-draft targets need the separate template permission plus applicable status editing permission. No Theme Builder conditions or assignments.',$id+array('template'=>Toolbox::text()),array('id','template'),'template_set',false),
             array('content-revision-compare','Compare a saved revision with its exact parent.',$id+array('revision_id'=>Toolbox::id()),array('id','revision_id'),'compare',true),
             array('content-revision-restore','Restore a native WordPress revision on an existing non-Elementor draft, including revision-enabled metadata. Elementor documents/revisions are refused because their restore hooks can change layout outside the core comparison. Use Calico Undo or Elementor History for those.',$id+array('revision_id'=>Toolbox::id()),array('id','revision_id'),'restore',false)
         );
@@ -30,7 +30,8 @@ class Content_Operations extends Ability_Pack {
         return array('id'=>$post->ID,'template'=>get_page_template_slug($post->ID)?:'default','choices'=>(object)(array_merge(array('default'=>'Default'),wp_get_theme()->get_page_templates($post,$post->post_type))),'revision'=>Guard::revision(Guard::snapshot($post->ID)));
     }
     public static function template_set($a) {
-        $post=self::post($a['id'],true);if(is_wp_error($post))return $post;
+        $post=self::post($a['id']);if(is_wp_error($post))return $post;
+        if($post->post_status!=='draft'&&(empty(Policy::settings()['template_existing'])||!Policy::editable_status($post,true)))return new \WP_Error('template_status_denied','Non-draft template assignment needs its separate permission plus the applicable published/other-status editing permission.');
         $choices=array_merge(array('default'=>'Default'),wp_get_theme()->get_page_templates($post,$post->post_type));
         if(!isset($choices[$a['template']])||!Events::can_edit_meta($post->ID,'_wp_page_template'))return new \WP_Error('template_denied','Choose a registered template with metadata permission.');
         update_post_meta($post->ID,'_wp_page_template',$a['template']);

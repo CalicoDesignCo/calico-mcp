@@ -45,7 +45,7 @@ class Events extends Ability_Pack {
             echo '<details data-cmcp-selection="type" style="margin:12px 0"><summary>'.esc_html($candidate['label']).' <code>'.esc_html($type).'</code></summary><fieldset style="padding-left:12px">';
             Admin::selection_buttons($candidate['label'].' fields and taxonomies');
             echo '<label><input type="checkbox" name="event_types['.esc_attr($type).'][enabled]" value="1" '.checked(isset($scope[$type]),true,false).'> Read '.esc_html($candidate['label']).'</label>';
-            foreach($candidate['fields'] as $key=>$field) { $definition=self::definition($key,$field); echo '<label><input type="checkbox" name="event_types['.esc_attr($type).'][fields][]" value="'.esc_attr($key).'" '.checked(in_array($key,$selected['fields']??array(),true),true,false).'> '.esc_html($definition['label']).' <code>'.esc_html($key).'</code> <small>('.esc_html($definition['storage_format']).')</small></label>'; }
+            foreach($candidate['fields'] as $key=>$field) { $definition=self::definition($key,$field); echo '<label><input type="checkbox" name="event_types['.esc_attr($type).'][fields][]" value="'.esc_attr($key).'" '.checked(in_array($key,$selected['fields']??array(),true),true,false).'> '.esc_html($definition['label']).' <code>'.esc_html($key).'</code> <small>('.esc_html($definition['storage_format']).')</small><br><small>'.esc_html($definition['write_support']['reason'].' '.$definition['write_support']['next_step']).'</small></label>'; }
             foreach(self::taxonomy_definitions($type) as $tax=>$definition) { echo '<label><input type="checkbox" name="event_types['.esc_attr($type).'][taxonomies][]" value="'.esc_attr($tax).'" '.checked(in_array($tax,$selected['taxonomies']??array(),true),true,false).'> Taxonomy: '.esc_html($definition['label']).' <code>'.esc_html($tax).'</code></label>'; }
             echo '</fieldset></details>';
         }
@@ -76,6 +76,7 @@ class Events extends Ability_Pack {
     public static function definition($key,$f) {
         $format=self::format($f);
         $out=array('name'=>$key,'label'=>(string)($f['title']??$f['label']??$key),'type'=>$f['type']??'text','storage_format'=>$format,'writable'=>$format!=='read_only','input_note'=>in_array($format,array('date_iso','date_timestamp_utc'),true)?'YYYY-MM-DD; timestamp dates use UTC midnight.':($format==='datetime_timestamp'?'ISO 8601 with explicit offset or Unix seconds.':($format==='read_only'?'Direct replacement is not supported. See initial_rows_supported for new drafts and row_updates_supported for existing rows.':'Use the declared scalar type.')));
+        $out['write_support']=Field_Diagnostics::support($f,$format);
         if(in_array($format,array('select','radio'),true)){$out['options']=array();foreach($f['options']as $option)if(isset($option['key'])&&is_scalar($option['key']))$out['options'][]=array('value'=>(string)$option['key'],'label'=>(string)($option['value']??$option['key']));}
         if($format==='jetengine_single_date'){$out['input_note']='Object patch: date/end_date YYYY-MM-DD; time/end_time HH:MM. Omitted parts are preserved. Empty end_date and end_time clear the end. Single dates only; overnight ends need the following date. Native JetEngine wall-clock timestamps, not UTC instants.';$out['storage_keys']=Advanced_Date::keys($key);}
         return ($f['type']??'')==='repeater'?array_merge($out,Event_Repeaters::describe($f)):$out;
@@ -101,7 +102,7 @@ class Events extends Ability_Pack {
     public static function schema() {
         $auth=self::authorize('event-schema'); if(is_wp_error($auth)) { return $auth; }
         $types=array(); foreach(self::scope() as $type=>$selection) { $fields=self::selected($type); if(is_wp_error($fields)) { continue; } $definitions=array(); foreach($fields as $key=>$f) { $definitions[]=self::definition($key,$f); } $types[]=array('post_type'=>$type,'label'=>get_post_type_object($type)->label,'fields'=>$definitions,'taxonomies'=>array_intersect_key(self::taxonomy_definitions($type),array_flip($selection['taxonomies']??array()))); }
-        return array('types'=>$types,'timezone'=>wp_timezone_string(),'write_status'=>'draft','existing_write_statuses'=>!empty(Policy::settings()['published'])?array('draft','publish'):array('draft'),'storage'=>'WordPress post meta only');
+        return array('types'=>$types,'timezone'=>wp_timezone_string(),'write_status'=>'draft','existing_write_statuses'=>array_merge(array('draft'),!empty(Policy::settings()['published'])?array('publish'):array(),!empty(Policy::settings()['other_statuses'])?array('pending','private','future'):array()),'scheduled_edit_note'=>'Schedules due in less than two minutes are refused; editing preserves publication dates and cron','storage'=>'WordPress post meta only');
     }
     private static function resolve($type,$id) {
         $fields=self::selected($type); if(is_wp_error($fields)) { return $fields; }
@@ -248,14 +249,14 @@ class Events extends Ability_Pack {
     public static function update_existing($args) {
         $auth=self::authorize('cpt-update');if(is_wp_error($auth))return $auth;
         $post=self::resolve($args['post_type'],$args['id']);if(is_wp_error($post))return $post;
-        if(!Policy::editable_status($post,true)||!current_user_can('edit_post',$post->ID))return new \WP_Error('content_status_denied','Use a draft, or enable published editing for an existing published item. Other statuses and status transitions are not supported.');
+        if(!Policy::editable_status($post,true)||!current_user_can('edit_post',$post->ID))return new \WP_Error('content_status_denied','Enable the applicable published or Pending/Private/Scheduled editing permission. Status and publication schedule are preserved; imminent/overdue schedules are refused.');
         if(array_key_exists('content',$args)&&get_post_meta($post->ID,'_elementor_data',true))return new \WP_Error('elementor_not_enabled','Use Elementor tools to edit an Elementor body.');
         $plan=self::plan($args,$post->ID);return is_wp_error($plan)?$plan:self::apply($post->ID,$args,$plan);
     }
     public static function rows($args) {
         $auth=self::authorize('cpt-repeater-rows');if(is_wp_error($auth))return $auth;
         $post=self::resolve($args['post_type'],$args['id']);if(is_wp_error($post))return $post;
-        if(!Policy::editable_status($post,true)||!current_user_can('edit_post',$post->ID))return new \WP_Error('content_status_denied','Repeater operations require a draft or explicitly permitted published item.');
+        if(!Policy::editable_status($post,true)||!current_user_can('edit_post',$post->ID))return new \WP_Error('content_status_denied','Repeater operations require an item with the applicable status editing permission.');
         $plan=Event_Repeaters::operation($args,self::selected($post->post_type),$post->ID);
         return is_wp_error($plan)?$plan:self::apply($post->ID,$args,array('fields'=>$plan,'terms'=>array()));
     }

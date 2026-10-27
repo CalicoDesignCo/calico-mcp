@@ -7,7 +7,7 @@ if (!defined('ABSPATH')) { exit; }
 class Policy {
     const OPTION = 'calicomcp_personal_settings';
     public static function settings() {
-        return wp_parse_args((array)get_option(self::OPTION, array()), array('shared_templates'=>false,'organization'=>false,'owner'=>0,'enabled'=>false,'content'=>false,'media'=>false,'seo'=>false,'events'=>false,'elementor'=>false,'structure'=>false,'terms'=>false,'seo_advanced'=>false,'elementor_full'=>false,'published'=>false,'repeater_rows'=>false,'event_types'=>array()));
+        return wp_parse_args((array)get_option(self::OPTION, array()), array('other_statuses'=>false,'template_existing'=>false,'trash'=>false,'publish'=>false,'schedule'=>false,'status'=>false,'shared_templates'=>false,'organization'=>false,'owner'=>0,'enabled'=>false,'content'=>false,'media'=>false,'seo'=>false,'events'=>false,'elementor'=>false,'structure'=>false,'terms'=>false,'seo_advanced'=>false,'elementor_full'=>false,'published'=>false,'repeater_rows'=>false,'event_types'=>array()));
     }
     public static function enabled() { $s=self::settings(); $site=wp_parse_url(home_url()); $secure=($site['scheme']??'')==='https' || in_array($site['host']??'',array('127.0.0.1','localhost','::1'),true); return $secure && !empty($s['enabled']) && self::is_owner((int)$s['owner']); }
     public static function is_owner($id) { $s=self::settings(); return $id>0 && (int)$s['owner']===$id && user_can($id,'manage_options'); }
@@ -25,10 +25,15 @@ class Policy {
     }
     public static function groups() {
         return array(
+            'lifecycle_read'=>array('content-status-get','content-trash-get'),
+            'trash'=>array('content-trash','content-restore-from-trash'),
+            'publish'=>array('content-publish'),
+            'schedule'=>array('content-schedule'),
+            'status'=>array('content-set-status'),
             'organization_read'=>array('organization-get'),
             'organization'=>array('organization-update'),
             'shared_read'=>array('shared-template-list'),
-            'structure_read'=>array('content-template-get','content-revision-compare','taxonomy-list','term-list','term-get','cpt-discover','bridge-import-preview','cpt-schema','cpt-list','cpt-get','cpt-terms'),
+            'structure_read'=>array('content-template-get','content-revision-compare','taxonomy-list','term-list','term-get','cpt-discover','cpt-field-explain','bridge-import-preview','cpt-schema','cpt-list','cpt-get','cpt-terms'),
             'structure'=>array('content-duplicate','content-template-set','content-revision-restore'),
             'terms'=>array('term-create','term-update','content-set-terms'),
             'seo_advanced'=>array('update-breadcrumb-title','update-canonical','update-robots-meta','update-robots-advanced','update-cornerstone','update-schema-types','update-sitemap-inclusion'),
@@ -51,6 +56,13 @@ class Policy {
         return null;
     }
     public static function supports($name) { return self::group($name)!==null; }
+    public static function listed($name,$available) {
+        // Only suppress aliases when their replacement is already authorized by
+        // the current policy AND the existing application's role grants.
+        $aliases=array('event-schema'=>'cpt-schema','event-list'=>'cpt-list','event-get'=>'cpt-get','event-terms'=>'cpt-terms','event-create-draft'=>'cpt-create-draft','event-update-draft'=>'cpt-update','cpt-update-draft'=>'cpt-update','elementor-get'=>'elementor-page-read','elementor-update-draft'=>'elementor-element-set-content');
+        $target=$aliases[substr($name,10)]??null;
+        return !$target||!in_array('calicomcp/'.$target,$available,true);
+    }
     public static function allowed($name) {
         if(!self::enabled()) { return false; }
         $group=self::group($name); $settings=self::settings();
@@ -58,11 +70,17 @@ class Policy {
         if($group==='shared_read'&&!Elementor::available())return false;
         if($group==='repeater_rows'&&empty($settings['events']))return false;
         if(in_array($group,array('elementor_read','elementor','elementor_full_read','elementor_full'),true) && !Elementor::available()) { return false; }
-        return in_array($group,array('read','structure_read','elementor_full_read','elementor_read','organization_read','shared_read'),true) || ($group!==null && !empty($settings[$group]));
+        return in_array($group,array('lifecycle_read','read','structure_read','elementor_full_read','elementor_read','organization_read','shared_read'),true) || ($group!==null && !empty($settings[$group]));
     }
-    public static function writer($name) { $group=self::group($name); return $group!==null && !in_array($group,array('read','structure_read','elementor_read','elementor_full_read','organization_read','shared_read'),true); }
+    public static function writer($name) { $group=self::group($name); return $group!==null && !in_array($group,array('lifecycle_read','read','structure_read','elementor_read','elementor_full_read','organization_read','shared_read'),true); }
     public static function editable_status($post,$allow_published=false) {
-        return $post&&($post->post_status==='draft'||($allow_published&&$post->post_status==='publish'&&!empty(self::settings()['published'])));
+        if(!$post)return false;
+        if($post->post_status==='draft')return true;
+        if(!$allow_published)return false;
+        $s=self::settings();
+        if($post->post_status==='publish')return !empty($s['published']);
+        if(in_array($post->post_status,array('pending','private','future'),true)&&!empty($s['other_statuses']))return $post->post_status!=='future'||strtotime($post->post_date_gmt.' UTC')>=time()+120;
+        return false;
     }
     public static function configure(array $new) {
         $old=self::settings();
@@ -75,7 +93,7 @@ class Policy {
     public static function sync() {
         $settings=self::settings(); $names=array();
         foreach(self::groups() as $group=>$slugs) {
-            if(in_array($group,array('read','structure_read','elementor_read','elementor_full_read','organization_read','shared_read'),true) || !empty($settings[$group])) {
+            if(in_array($group,array('lifecycle_read','read','structure_read','elementor_read','elementor_full_read','organization_read','shared_read'),true) || !empty($settings[$group])) {
                 foreach($slugs as $slug) { $names[]='calicomcp/'.$slug; }
             }
         }

@@ -34,7 +34,7 @@ class Recovery {
         $full_revision=$row['tool']==='calicomcp/content-revision-restore';
         $selection=$event?(Events::scope()[$before['fields']['post_type']]??array()):array();
         if($event)$selection['fields']=Advanced_Date::recovery_keys($before['fields']['post_type'],$selection['fields']??array());
-        foreach(array('post_title','post_content','post_excerpt','post_name','post_status') as $field) { if($before['fields'][$field]!==$after['fields'][$field]) { $delta['fields'][$field]=$before['fields'][$field]; } }
+        foreach(array('post_title','post_content','post_excerpt','post_name','post_status','post_date','post_date_gmt') as $field) { if($before['fields'][$field]!==$after['fields'][$field]) { $delta['fields'][$field]=$before['fields'][$field]; } }
         foreach(array_unique(array_merge(array_keys($before['meta']),array_keys($after['meta']))) as $key) {
             if(Guard::derived_counter($key,$after['meta'][$key]??null))continue;
             if(in_array($key,array('_elementor_css','_elementor_element_cache','_elementor_page_assets'),true)||preg_match('/^_elementor_migrations_state_[a-f0-9]{4}$/D',$key))continue;
@@ -65,6 +65,9 @@ class Recovery {
         $row=$wpdb->get_row($wpdb->prepare("SELECT * FROM %i WHERE id=%d AND user_id=%d AND state='ready'",self::table(),$id,get_current_user_id()),ARRAY_A);
         if(!$row || !current_user_can('edit_post',(int)$row['post_id'])) { return new \WP_Error('not_found','Recovery entry is not available.'); }
         $post_id=(int)$row['post_id']; $current=Guard::snapshot($post_id);
+        $saved=json_decode($row['before_data'],true);
+        // Pre-beta33 recovery records used a hash without publication dates.
+        if($current&&!isset($saved['after_fingerprints']['fields']['post_date'])){unset($current['fields']['post_date'],$current['fields']['post_date_gmt']);}
         // Older records included the view counter. Accept their original hash
         // only when the complete legacy state still matches, without bypasses.
         if(!$current || (!hash_equals($row['after_hash'],Guard::revision($current))&&!hash_equals($row['after_hash'],Guard::revision($current,false)))) {
@@ -76,12 +79,19 @@ class Recovery {
             }
             return new \WP_Error('stale_recovery','This item has changed since that edit. Undo was refused to preserve newer work.'.$detail);
         }
+        if(in_array($row['tool'],array('calicomcp/content-publish','calicomcp/content-schedule','calicomcp/content-set-status'),true)){
+            $target=$saved['fields']['post_status']??$current['fields']['post_status'];
+            $type=get_post_type_object($current['fields']['post_type']);
+            if(in_array($target,array('publish','private','future'),true)&&(!$type||!current_user_can($type->cap->publish_posts)))return new \WP_Error('publish_denied','WordPress refused the publishing capability required by this Undo.');
+            $gmt=$saved['fields']['post_date_gmt']??get_post($post_id)->post_date_gmt;
+            if($target==='future'&&strtotime($gmt.' UTC')<time()+120)return new \WP_Error('schedule_expired','Undo would restore an expired or imminent publication schedule. No change made; choose a new publication time explicitly.');
+        }
         // Claim the recovery entry before applying it, so repeated submissions cannot run twice.
         $claimed=$wpdb->query($wpdb->prepare("UPDATE %i SET state='restoring' WHERE id=%d AND state='ready'",self::table(),$id));
         if($claimed!==1) { return new \WP_Error('recovery_busy','This recovery is already in progress.'); }
         $delta=json_decode($row['before_data'],true);
         if(!empty($delta['fields'])) {
-            $result=wp_update_post(wp_slash(array_merge(array('ID'=>$post_id),$delta['fields'])),true);
+            $result=wp_update_post(wp_slash(array_merge(array('ID'=>$post_id,'edit_date'=>true),$delta['fields'])),true);
             if(is_wp_error($result)) { $wpdb->update(self::table(),array('state'=>'ready'),array('id'=>$id)); return $result; }
         }
         foreach($delta['meta'] as $key=>$values) {
@@ -95,6 +105,12 @@ class Recovery {
         Advanced_Date::invalidate($post_id,array_keys($delta['meta']));
         if($row['tool']==='calicomcp/elementor-update-draft'||Policy::group($row['tool'])==='elementor_full'||($row['tool']==='calicomcp/content-revision-restore'&&get_post_meta($post_id,'_elementor_data',true))) { Elementor::invalidate($post_id); }
         $restored=Guard::snapshot($post_id);
+        if(in_array($row['tool'],array('calicomcp/content-publish','calicomcp/content-schedule','calicomcp/content-set-status'),true)){
+            if($restored['fields']['post_status']!=='future')wp_clear_scheduled_hook('publish_future_post',array($post_id));
+            $cron=wp_next_scheduled('publish_future_post',array($post_id));
+            $expected=$restored['fields']['post_status']==='future'?strtotime($restored['fields']['post_date_gmt'].' UTC'):false;
+            if($cron!==$expected){$wpdb->update(self::table(),array('state'=>'failed'),array('id'=>$id));return new \WP_Error('restore_failed','Publication cron readback did not match. Recovery data was retained.');}
+        }
         foreach($delta['fields'] as $key=>$value) { if($restored['fields'][$key]!==$value) { $wpdb->update(self::table(),array('state'=>'failed'),array('id'=>$id)); return new \WP_Error('restore_failed','Content readback did not match. Recovery data was retained.'); } }
         foreach($delta['meta'] as $key=>$value) { if(($restored['meta'][$key]??null)!==$value) { $wpdb->update(self::table(),array('state'=>'failed'),array('id'=>$id)); return new \WP_Error('restore_failed','Metadata readback did not match. Recovery data was retained.'); } }
         foreach($delta['terms']??array() as $taxonomy=>$ids) { sort($ids); if(($restored['terms'][$taxonomy]??array())!==$ids) { $wpdb->update(self::table(),array('state'=>'failed'),array('id'=>$id)); return new \WP_Error('restore_failed','Taxonomy readback did not match. Recovery data was retained.'); } }

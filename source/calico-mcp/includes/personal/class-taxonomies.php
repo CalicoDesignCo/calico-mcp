@@ -64,7 +64,7 @@ class Taxonomies extends Ability_Pack {
     public static function assign($a) {
         $post=get_post($a['id']);$t=self::require_taxonomy($a['taxonomy']);if(is_wp_error($t))return $t;
         if(!Toolbox::content_type($post)||!current_user_can('edit_post',$post->ID)||!current_user_can($t->cap->assign_terms)||!is_object_in_taxonomy($post->post_type,$a['taxonomy']))return new \WP_Error('assignment_denied','Content or taxonomy assignment is not allowed.');
-        if(!in_array($post->post_type,array('post','page'),true)&&(!Policy::allowed('calicomcp/event-update-draft')||$post->post_status!=='draft'))return new \WP_Error('draft_only','Selected custom content term edits require draft editing permission.');
+        if(!in_array($post->post_type,array('post','page'),true)&&(!Policy::allowed('calicomcp/cpt-update')||!Policy::editable_status($post,true)))return new \WP_Error('content_status_denied','Selected custom content needs editing and the applicable status permission.');
         foreach($a['term_ids'] as $id)if(!term_exists($id,$a['taxonomy']))return new \WP_Error('term_missing','Use existing terms.');
         $before=wp_get_object_terms($post->ID,$a['taxonomy'],array('fields'=>'ids'));if(is_wp_error($before))return $before;
         $ids=$a['operation']==='add'?array_values(array_unique(array_merge($before,$a['term_ids']))):array_values(array_diff($before,$a['term_ids']));

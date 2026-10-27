@@ -7,7 +7,7 @@ use CalicoMCP\Abilities\Packs\Yoast\YSOA_Helpers;
 if (!defined('ABSPATH')) { exit; }
 class Abilities {
     private static function packs() {
-        $packs=array(new \CalicoMCP\Abilities\Packs\Core\Posts_Pack(),new \CalicoMCP\Abilities\Packs\Core\Pages_Pack(),new \CalicoMCP\Abilities\Packs\Core\Media_Pack(),new \CalicoMCP\Abilities\Packs\Core\Revisions_Pack(),new \CalicoMCP\Abilities\Packs\Editing\Editing_Pack(),new Events(),new Content_Types(),new Content_Operations(),new Taxonomies(),new Elementor(),new Shared_Templates(),new Organization());
+        $packs=array(new \CalicoMCP\Abilities\Packs\Core\Posts_Pack(),new \CalicoMCP\Abilities\Packs\Core\Pages_Pack(),new \CalicoMCP\Abilities\Packs\Core\Media_Pack(),new \CalicoMCP\Abilities\Packs\Core\Revisions_Pack(),new \CalicoMCP\Abilities\Packs\Editing\Editing_Pack(),new Events(),new Content_Types(),new Content_Operations(),new Taxonomies(),new Elementor(),new Shared_Templates(),new Organization(),new Lifecycle(),new Trash());
         if(Elementor::available())$packs[]=new \CalicoMCP\Abilities\Packs\Elementor\Elementor_Pack();
         return $packs;
     }

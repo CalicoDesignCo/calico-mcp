@@ -9,7 +9,7 @@ class Guard {
     public static function creation($name) { return in_array($name,array('calicomcp/post-create-draft','calicomcp/page-create-draft','calicomcp/media-upload-from-url','calicomcp/media-upload-file','calicomcp/event-create-draft','calicomcp/cpt-create-draft','calicomcp/term-create'),true); }
     public static function snapshot($id) {
         clean_post_cache($id); $post=get_post($id); if(!$post) { return null; }
-        $fields=array(); foreach(array('post_title','post_content','post_excerpt','post_status','post_type','post_name','post_parent','post_author','post_modified_gmt','post_mime_type') as $key) { $fields[$key]=$post->$key; }
+        $fields=array(); foreach(array('post_title','post_content','post_excerpt','post_status','post_type','post_name','post_parent','post_author','post_date','post_date_gmt','post_modified_gmt','post_mime_type') as $key) { $fields[$key]=$post->$key; }
         $meta=get_post_meta($id); unset($meta['_edit_lock'],$meta['_edit_last']); ksort($meta);
         $terms=array(); foreach(get_object_taxonomies($post->post_type) as $taxonomy) { $ids=wp_get_object_terms($id,$taxonomy,array('fields'=>'ids')); if(!is_wp_error($ids)) { sort($ids); $terms[$taxonomy]=$ids; } } ksort($terms);
         return array('fields'=>$fields,'meta'=>$meta,'terms'=>$terms);
@@ -40,7 +40,7 @@ class Guard {
     public static function input_schema($ability) {
         $schema=$ability->get_input_schema(); $name=$ability->get_name();
         if(in_array(Policy::group($name),array('elementor_full','elementor_full_read'),true)&&isset($schema['properties']['id']))$schema['properties']['id']['description']='Existing post, page or shared Elementor template ID. Use shared-template-list to discover templates. Shared writes need separate permission and may affect many pages.';
-        if(in_array(Policy::group($name),array('seo','seo_advanced'),true)) { $schema['properties']['post_id']['description']='Existing post/page ID, or a selected custom draft/published item. Custom content SEO requires custom editing and the applicable Yoast permission; published custom items also require published editing.'; }
+        if(in_array(Policy::group($name),array('seo','seo_advanced'),true)) { $schema['properties']['post_id']['description']='Existing post/page ID, or a selected custom item in an enabled status. Custom content SEO requires custom editing, the applicable Yoast permission and the applicable published or other-status editing opt-in.'; }
         if(Policy::writer($name) && !self::creation($name)) {
             $schema['properties']['expected_revision']=array('type'=>'string','description'=>'Revision returned by a fresh get/read of this exact item. A stale revision refuses the edit.','minLength'=>64,'maxLength'=>64);
             $schema['required']=array_values(array_unique(array_merge($schema['required']??array(),array('expected_revision'))));
@@ -96,23 +96,26 @@ class Guard {
             $document=get_post($id);if(!$document||(!in_array($document->post_type,array('post','page'),true)&&!Shared_Templates::supported($document)))return new \WP_Error('elementor_document_denied','Use a post, page or supported existing shared Elementor template.');
             if($writer&&Shared_Templates::supported($document)&&empty(Policy::settings()['shared_templates']))return new \WP_Error('shared_template_denied','Shared-template editing is disabled. This document may affect many pages.');
         }
+        if(in_array($name,array('calicomcp/content-trash','calicomcp/content-restore-from-trash'),true))return Trash::execute($ability,$args);
         if($name==='calicomcp/organization-update')return Entity_Recovery::run($ability,$args);
         if($name==='calicomcp/term-update')return Entity_Recovery::run($ability,$args);
         if($name==='calicomcp/term-create')return $ability->execute($args);
         if($name==='calicomcp/term-get')return $ability->execute($args);
-        $lock=false; $backup=0;
+        $lock=false; $backup=0; $preserve_dates=false;
         if($writer && !$creation) {
             if(!$id || !current_user_can('edit_post',$id)) { return new \WP_Error('calicomcp_denied','A writable item ID is required.'); }
             $post=get_post($id);
             $event_seo=in_array(Policy::group($name),array('seo','seo_advanced'),true) && $post && !in_array($post->post_type,array('post','page','attachment'),true) && Events::is_selected_type($post->post_type);
             $event=(in_array($name,array('calicomcp/event-update-draft','calicomcp/cpt-update-draft','calicomcp/cpt-update','calicomcp/cpt-repeater-rows'),true) && $post && Events::is_selected_type($post->post_type)) || $event_seo;
+            $lifecycle=in_array($name,array('calicomcp/content-publish','calicomcp/content-schedule','calicomcp/content-set-status'),true)&&Toolbox::content_type($post);
             $structural=$post&&in_array(Policy::group($name),array('structure','terms'),true)&&Toolbox::content_type($post);
             $shared=$post&&Policy::group($name)==='elementor_full'&&Shared_Templates::supported($post)&&!empty(Policy::settings()['shared_templates']);
-            if(!$post || (!$event && !$structural && !$shared && !in_array($post->post_type,array('post','page','attachment'),true))) { return new \WP_Error('unsupported_content_type','Use a supported content type or selected custom draft.'); }
-            if($event&&!Policy::editable_status($post,$event_seo||in_array($name,array('calicomcp/cpt-update','calicomcp/cpt-repeater-rows'),true)))return new \WP_Error('content_status_denied','This tool requires a draft, or separate permission for already-published custom content. Legacy draft tools remain draft-only.');
+            if(!$post || (!$event && !$structural && !$shared && !$lifecycle && !in_array($post->post_type,array('post','page','attachment'),true))) { return new \WP_Error('unsupported_content_type','Use a supported content type or selected custom draft.'); }
+            if($event&&!Policy::editable_status($post,$event_seo||in_array($name,array('calicomcp/cpt-update','calicomcp/cpt-repeater-rows'),true)))return new \WP_Error('content_status_denied','This tool needs the applicable status editing permission. Legacy draft aliases remain draft-only.');
             if(in_array(Policy::group($name),array('seo','seo_advanced'),true)) { $allowed=self::seo_meta($name,$args,$id,$event_seo); if(is_wp_error($allowed)) { return $allowed; } }
             if(Policy::group($name)==='elementor_full')foreach(array('_elementor_data','_elementor_edit_mode','_elementor_version','_elementor_template_type') as $meta_key)if(!Events::can_edit_meta($id,$meta_key))return new \WP_Error('elementor_meta_denied','Elementor metadata authorization refused.');
-            if(in_array(Policy::group($name),array('elementor','elementor_full'),true)&&!Policy::editable_status($post,Policy::group($name)==='elementor_full'))return new \WP_Error('elementor_status_denied','Use a draft, or enable published editing for full Elementor tools. Legacy widget draft tools remain draft-only.');
+            if(in_array(Policy::group($name),array('elementor','elementor_full'),true)&&!Policy::editable_status($post,Policy::group($name)==='elementor_full'))return new \WP_Error('elementor_status_denied','Enable the applicable status editing permission for full Elementor tools. Legacy widget tools remain draft-only.');
+            if($post->post_status==='future'&&!$lifecycle&&strtotime($post->post_date_gmt.' UTC')<time()+120)return new \WP_Error('schedule_imminent','Publication is imminent or overdue. Read the saved status after cron runs before editing.');
             if(get_post_meta($id,'_elementor_data',true) && (array_key_exists('content',$args)||$name==='calicomcp/content-replace-in-post')) { return new \WP_Error('elementor_not_enabled','This item has an Elementor layout. Its body cannot be changed by this prototype.'); }
             $lock=self::lock($id); if(!$lock) { return new \WP_Error('item_busy','Another Calico edit is in progress. Read the item again and retry.'); }
         }
@@ -120,15 +123,29 @@ class Guard {
             if($writer && !$creation) {
                 $before=self::snapshot($id);
                 if(!isset($args['expected_revision']) || !is_string($args['expected_revision']) || !hash_equals(self::revision($before),$args['expected_revision'])) { return new \WP_Error('stale_revision','The item changed or no revision was supplied. Read it again before editing.'); }
+                $publication_cron=wp_next_scheduled('publish_future_post',array($id));
                 $backup=Recovery::begin($id,$before,$name);
                 if(!$backup) { return new \WP_Error('backup_failed','Recovery data could not be saved. No edit was attempted.'); }
                 unset($args['expected_revision']);
+                if(!in_array($name,array('calicomcp/content-publish','calicomcp/content-schedule','calicomcp/content-set-status'),true)) {
+                    // wp_update_post() otherwise replaces an unpublished item's
+                    // local date when its GMT date is zero. Scope this filter to
+                    // the exact existing item, never new copies or revisions.
+                    $preserve_dates=static function($data,$postarr)use($id,$before){
+                        if((int)($postarr['ID']??0)===$id)foreach(array('post_date','post_date_gmt')as $key)$data[$key]=$before['fields'][$key];
+                        return $data;
+                    };
+                    add_filter('wp_insert_post_data',$preserve_dates,PHP_INT_MAX,2);
+                }
             }
             $result=$ability->execute($args);
             if($backup) {
                 $after=self::snapshot($id);
+                $preserves_schedule=!in_array($name,array('calicomcp/content-publish','calicomcp/content-schedule','calicomcp/content-set-status'),true);
+                $schedule_changed=$preserves_schedule&&($before['fields']['post_date']!==$after['fields']['post_date']||$before['fields']['post_date_gmt']!==$after['fields']['post_date_gmt']||$publication_cron!==wp_next_scheduled('publish_future_post',array($id)));
                 if(!Recovery::finish($backup,$after))return new \WP_Error('recovery_finalize_failed','The edit ran but its recovery record could not be finalized. Check the saved item before retrying.',array('recovery_id'=>$backup));
-                if($before['fields']['post_status']!==$after['fields']['post_status'])return new \WP_Error('unexpected_status_change','A WordPress hook changed this item status during the edit. No status transition was requested. Inspect the item and its recovery record before retrying.',array('recovery_id'=>$backup));
+                if($schedule_changed)return new \WP_Error('unexpected_schedule_change','A hook changed publication dates or cron. Inspect the saved item and recovery checkpoint before retrying.',array('recovery_id'=>$backup));
+                if(!in_array($name,array('calicomcp/content-publish','calicomcp/content-schedule','calicomcp/content-set-status'),true)&&$before['fields']['post_status']!==$after['fields']['post_status'])return new \WP_Error('unexpected_status_change','A WordPress hook changed this item status during the edit. No status transition was requested. Inspect the item and its recovery record before retrying.',array('recovery_id'=>$backup));
             }
             if(is_array($result)) {
                 $resultId=$name==='calicomcp/content-duplicate'?self::subject($result):($id?:self::subject($result));
@@ -137,6 +154,6 @@ class Guard {
                 if($id&&Shared_Templates::supported(get_post($id)))$result['shared_template_note']='This shared document may affect multiple pages. Its assignment and display conditions are preserved; verify rendered output separately.';
             } elseif(is_wp_error($result) && $backup) { $result->add_data(array('recovery_id'=>$backup)); }
             return $result;
-        } finally { if($lock) { self::unlock($lock); } }
+        } finally { if($preserve_dates)remove_filter('wp_insert_post_data',$preserve_dates,PHP_INT_MAX); if($lock) { self::unlock($lock); } }
     }
 }
