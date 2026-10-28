@@ -2,9 +2,9 @@
 
 Direct WordPress MCP tools for one configured administrator. Skills supply workflow instructions; the connector supplies authenticated site operations.
 
-Version: **0.1.0-beta.36**, for staging evaluation. Install the **calico-mcp.zip** release asset, not GitHub's automatic source archive.
+Version: **0.1.0-beta.37**, for staging evaluation. Install the **calico-mcp.zip** release asset, not GitHub's automatic source archive.
 
-Beta36 preserves local and GMT publication dates during ordinary existing-item edits, including unpublished items with an unset GMT date. Explicit publication tools retain control of dates. It includes the independently gated publication and content-management features added since beta32.
+Beta37 fixes WP-Optimize adding an HTML cache comment to OAuth discovery JSON. It uses request-local cache/comment filters for Calico responses, preserving saved cache settings and normal site processing. No WP-Optimize files, OAuth grants or registrations are changed.
 
 ## Included
 
@@ -35,11 +35,11 @@ Older installations without the updater need one manual beta28-or-newer installa
 
 ## Verification and limits
 
-The exact beta36 ZIP passed 430 local integration checks: 116 focused content-management/date checks, 212 retained-feature checks, 45 core OAuth/content/media/Yoast checks and 57 publication-lifecycle checks. All 89 PHP files parse under PHP7.4.33 and PHP8.3. Local runtime: WordPress7.1.3/PHP8.3 with real Elementor4.3.4 and Yoast28.7.
+The exact beta37 ZIP passed 70 local integration checks: 25 focused WP-Optimize compatibility checks and 45 core OAuth/content/media/Yoast checks. All 89 PHP files parse under PHP7.4.33 and PHP8.3. Local runtime: WordPress7.1.3/PHP8.3, official WP-Optimize4.7.0 with caching enabled, and real Yoast28.7 in the core suite. The compatibility suite reproduced beta36 invalid JSON, then verified clean beta37 discovery, no-store headers, normal page cache processing, isolated bypass and preserved settings/registration. Subdirectory URLs use an explicit local fixture override.
 
-A focused hosted beta36 test passed 27 checks, including Pending title edits with populated and unset GMT dates, exact date/cron preservation, stale-write refusal and administrator Undo. Test items ended as drafts, original access choices were restored and temporary credentials were revoked. Earlier scoped publication, content-management, shared-template and organization-profile tests are retained evidence; this does not certify every plugin/widget or external notification/cache behavior. Undo cannot retract notifications triggered by publication.
+A separately approved hosted upgrade verified clean discovery with WP-Optimize4.7.0 page caching enabled, the unauthenticated MCP challenge, normal homepage processing and preservation of all 92 access choices plus the original app registration. The original cache/plugin state was restored. An authenticated read through the existing AI connection was unavailable in that chat and remains unverified; registration preservation alone is not proof of a usable token or fresh OAuth login.
 
-The native GitHub update flow was previously verified from beta28 to beta29. Beta36 was installed manually for its hosted retest; a live Dashboard upgrade into beta36 has not yet been performed. See verification-summary.json and CHANGELOG.md.
+Beta36 previously passed 430 local checks and 27 focused hosted checks; those are retained prior-version evidence, not beta37 reruns. The native GitHub update flow was previously verified from beta28 to beta29. Beta37 was installed manually for its hosted retest; a live Dashboard upgrade into beta37 has not been performed. The fix cannot change a response served by an external cache before WordPress loads. See verification-summary.json and CHANGELOG.md.
 
 ## License
 

@@ -12,6 +12,14 @@ Allow explicit ownership recovery when the configured WordPress account no longe
 
 # Changelog
 
+## 0.1.0-beta.37 - October 28, 2026
+
+- Keep OAuth discovery JSON valid with WP-Optimize page caching enabled, including requests with a generic Accept header. Bypass its page-cache output/comment processing only for Calico responses using request-local filters.
+- Preserve stored caching options, ordinary pages, unrelated REST routes, access choices and OAuth registrations. No output buffers or third-party plugin files are removed or rewritten.
+- Exact ZIP: 70 local checks passed and 89 PHP files parsed on PHP7.4.33/8.3. Hosted discovery/cache compatibility and access preservation verified; authenticated AI read and live native GitHub upgrade into beta37 remain unverified.
+
+
+
 ## 0.1.0-beta.36 - October 27, 2026
 
 - Preserve existing local/GMT publication dates for ordinary edits, including unpublished items with an unset GMT date; scope the guard to the exact item and remove it after the operation. Explicit publishing/scheduling retains date control.
