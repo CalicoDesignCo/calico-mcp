@@ -105,6 +105,13 @@ class No_Cache {
 	 * @return void
 	 */
 	private static function disable_page_caches() {
+		// WP-Optimize may append its "page NOT cached" HTML comment even when
+		// DONOTCACHEPAGE and no-store headers are set. Bypass its page-cache
+		// processing for this response through its request-local option filter.
+		// This changes no saved setting and never removes another output buffer.
+		add_filter( 'wpo_option_key_enable_page_caching', '__return_false', PHP_INT_MAX );
+		add_filter( 'wpo_cache_show_cached_by_comment', '__return_false', PHP_INT_MAX );
+
 		// LiteSpeed Cache's documented opt-out; a no-op when it is not installed.
 		do_action( 'litespeed_control_set_nocache', 'calicomcp: live MCP/OAuth state' ); // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound -- LiteSpeed Cache's own hook.
 
