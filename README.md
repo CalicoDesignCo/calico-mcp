@@ -2,9 +2,9 @@
 
 Direct WordPress MCP tools for one configured administrator. Skills supply workflow instructions; the connector supplies authenticated site operations.
 
-Version: **0.1.0-beta.37**, for staging evaluation. Install the **calico-mcp.zip** release asset, not GitHub's automatic source archive.
+Version: **0.1.0-beta.38**, for staging evaluation. Install the **calico-mcp.zip** release asset, not GitHub's automatic source archive.
 
-Beta37 fixes WP-Optimize adding an HTML cache comment to OAuth discovery JSON. It uses request-local cache/comment filters for Calico responses, preserving saved cache settings and normal site processing. No WP-Optimize files, OAuth grants or registrations are changed.
+Beta38 fixes Select all and Clear all skipping newly added optional editing permissions. The controls now include all enabled checkboxes in their section, including publishing, scheduling, status changes, existing-item editing, template assignment and Trash. Selections take effect only after Save access.
 
 ## Included
 
@@ -35,11 +35,9 @@ Older installations without the updater need one manual beta28-or-newer installa
 
 ## Verification and limits
 
-The exact beta37 ZIP passed 70 local integration checks: 25 focused WP-Optimize compatibility checks and 45 core OAuth/content/media/Yoast checks. All 89 PHP files parse under PHP7.4.33 and PHP8.3. Local runtime: WordPress7.1.3/PHP8.3, official WP-Optimize4.7.0 with caching enabled, and real Yoast28.7 in the core suite. The compatibility suite reproduced beta36 invalid JSON, then verified clean beta37 discovery, no-store headers, normal page cache processing, isolated bypass and preserved settings/registration. Subdirectory URLs use an explicit local fixture override.
+Beta38 changes only the permission-selection JavaScript and release version/readme. Local selection regression covers all 19 current permissions, future additions, Clear all, disabled controls, section isolation, change events and global/per-CPT selectors. The exact installable ZIP passed 45 core integration checks on disposable WordPress7.1.3/PHP8.3 with official Yoast28.7, including activation, OAuth/PKCE, permission enforcement, guarded content/media/SEO operations, Undo, revocation and audit. A browser fixture verified all 19 permissions select/clear and Enable AI access stays unchanged. See verification-summary.json. Hosted installation and a native Dashboard update into beta38 have not been performed.
 
-A separately approved hosted upgrade verified clean discovery with WP-Optimize4.7.0 page caching enabled, the unauthenticated MCP challenge, normal homepage processing and preservation of all 92 access choices plus the original app registration. The original cache/plugin state was restored. An authenticated read through the existing AI connection was unavailable in that chat and remains unverified; registration preservation alone is not proof of a usable token or fresh OAuth login.
-
-Beta36 previously passed 430 local checks and 27 focused hosted checks; those are retained prior-version evidence, not beta37 reruns. The native GitHub update flow was previously verified from beta28 to beta29. Beta37 was installed manually for its hosted retest; a live Dashboard upgrade into beta37 has not been performed. The fix cannot change a response served by an external cache before WordPress loads. See verification-summary.json and CHANGELOG.md.
+Beta37 WP-Optimize discovery compatibility was previously verified locally and on staging; this is retained prior-version evidence. The native GitHub update flow was previously verified from beta28 to beta29. Existing beta28-or-newer installations contain the updater.
 
 ## License
 

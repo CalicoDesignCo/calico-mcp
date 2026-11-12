@@ -12,6 +12,14 @@ Allow explicit ownership recovery when the configured WordPress account no longe
 
 # Changelog
 
+## 0.1.0-beta.38 - November 12, 2026
+
+- Fix Select all and Clear all skipping six newer optional permissions. All enabled permissions in the section are included automatically, including future additions.
+- Keep Enable AI access and custom-content selection separately scoped. Selection is local until Save access. No permissions are enabled by installing the update.
+- Local selection regression passed; exact-package evidence is in verification-summary.json. Hosted installation and a native Dashboard upgrade into this version remain unverified.
+
+
+
 ## 0.1.0-beta.37 - October 28, 2026
 
 - Keep OAuth discovery JSON valid with WP-Optimize page caching enabled, including requests with a generic Accept header. Bypass its page-cache output/comment processing only for Calico responses using request-local filters.
