@@ -2,7 +2,7 @@
 Contributors: Calico Design
 Requires at least: 6.9
 Requires PHP: 7.4
-Stable tag: 0.1.0-beta.37
+Stable tag: 0.1.0-beta.38
 License: MIT
 
 Personal-use beta. Direct OAuth-protected MCP tools for WordPress, selected custom content, Elementor and Yoast SEO.
@@ -31,6 +31,9 @@ Pending, Private and Scheduled custom content/Elementor edits need the new other
 Custom field definitions and cpt-field-explain report why fields are read-only and the next supported action. Discovery prefers generic CPT and full Elementor tools when authorized; existing aliases remain callable with their original checks. Setup groups Content, Media, Elementor and SEO while retaining existing choices. No new permission is enabled automatically.
 
 == Changelog ==
+= 0.1.0-beta.38 =
+* Fix Select all and Clear all to include every enabled optional editing checkbox, including publishing, scheduling, status changes, existing-item edits, template assignment and Trash. Selection remains unsaved until Save access.
+
 = 0.1.0-beta.37 =
 Keep OAuth discovery JSON clean with WP-Optimize page caching enabled. Use request-local WP-Optimize filters only when Calico serves a response; preserve stored cache settings, ordinary pages, other REST routes, permissions and OAuth registrations.
 
